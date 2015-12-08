@@ -6,15 +6,8 @@ import be.nabu.libs.resources.api.ResourceContainer;
 
 public class BuildArtifact extends JAXBArtifact<BuildConfiguration> {
 
-	private Repository repository;
-
 	public BuildArtifact(String id, ResourceContainer<?> directory, Repository repository) {
-		super(id, directory, "build.xml", BuildConfiguration.class);
-		this.repository = repository;
-	}
-
-	public Repository getRepository() {
-		return repository;
+		super(id, directory, repository, "build.xml", BuildConfiguration.class);
 	}
 
 }
