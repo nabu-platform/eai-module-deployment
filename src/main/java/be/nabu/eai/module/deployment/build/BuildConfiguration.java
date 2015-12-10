@@ -10,7 +10,7 @@ import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.repository.jaxb.ArtifactXMLAdapter;
 
 @XmlRootElement(name = "build")
-@XmlType(propOrder = {"source", "version", "minorVersion", "artifacts"})
+@XmlType(propOrder = {"source", "version", "minorVersion", "artifacts", "foldersToClean"})
 public class BuildConfiguration {
 	/**
 	 * The source to build from
@@ -21,6 +21,11 @@ public class BuildConfiguration {
 	 * The artifacts to build (not using actual artifacts because we don't want reference management etc
 	 */
 	private List<String> artifacts;
+	
+	/**
+	 * The folders we have to clean (so basically anything in these folders that is not in the list of artifacts should be deleted)
+	 */
+	private List<String> foldersToClean;
 	
 	/**
 	 * The build version
@@ -55,5 +60,10 @@ public class BuildConfiguration {
 	public void setMinorVersion(Integer minorVersion) {
 		this.minorVersion = minorVersion;
 	}
-	
+	public List<String> getFoldersToClean() {
+		return foldersToClean;
+	}
+	public void setFoldersToClean(List<String> foldersToClean) {
+		this.foldersToClean = foldersToClean;
+	}
 }
