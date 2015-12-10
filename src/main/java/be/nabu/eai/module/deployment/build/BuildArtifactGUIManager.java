@@ -1,6 +1,9 @@
 package be.nabu.eai.module.deployment.build;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -9,6 +12,12 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBException;
+import javax.xml.bind.annotation.XmlRootElement;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +68,8 @@ import be.nabu.libs.resources.api.ManageableContainer;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.resources.api.WritableResource;
+import be.nabu.libs.validator.api.ValidationMessage;
+import be.nabu.libs.validator.api.ValidationMessage.Severity;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.WritableContainer;
@@ -66,6 +77,7 @@ import be.nabu.utils.io.api.WritableContainer;
 public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseArtifactGUIInstance<BuildArtifact>> {
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
+	private boolean initializing;
 	
 	public BuildArtifactGUIManager() {
 		super("Build", BuildArtifact.class, new BuildArtifactManager());
@@ -126,9 +138,38 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		}
 		tree.rootProperty().set(new DeploymentTreeItem(instance, tree, null, source.getRoot(), false));
 		tree.prefWidthProperty().bind(pane.widthProperty());
+		
+		initializing = true;
+		// select all the already selected items
+		if (instance.getConfiguration().getArtifacts() != null) {
+			for (String selected : instance.getConfiguration().getArtifacts()) {
+				TreeItem<Entry> resolve = tree.resolve(selected.replace(".", "/"));
+				if (resolve == null) {
+					MainController.getInstance().notify(new ValidationMessage(Severity.WARNING, "Can not select: " + selected));
+				}
+				else {
+					((DeploymentTreeItem) resolve).check.setSelected(true);
+					// if the parent item is also selected (due to auto-calculation) and it is _not_ in the "folders to be deleted" list, it has to be set to indeterminate
+					DeploymentTreeItem parent = ((DeploymentTreeItem) resolve).getParent();
+					while (parent != null) {
+						if (parent.check.isSelected()) {
+							if (!instance.getConfiguration().getFoldersToClean().contains(parent.itemProperty().get().getId())) {
+								parent.check.setIndeterminate(true);
+							}
+						}
+						parent = parent.getParent();
+					}
+				}
+			}
+		}
+		initializing = false;
+		
 		Label sourceLabel = new Label(instance.getConfiguration().getSource() == null ? "$self" : instance.getConfiguration().getSource().getId());
 		if (source instanceof ResourceRepository) {
-			sourceLabel.setText(sourceLabel.getText() + ": " + ResourceUtils.getURI(((ResourceRepository) source).getRoot()));
+			URI uri = ResourceUtils.getURI(((ResourceRepository) source).getRoot());
+			if (uri != null) {
+				sourceLabel.setText(sourceLabel.getText() + ": " + uri);
+			}
 		}
 		
 		HBox version = new HBox();
@@ -170,6 +211,7 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 			for (Resource child : privateDirectory) {
 				builds.getItems().add(child.getName().replace(".zip", ""));
 			}
+			Collections.sort(builds.getItems());
 		}
 		builds.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 		
@@ -184,10 +226,22 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 						ResourceContainer<?> container = ((ResourceEntry) entry).getContainer();
 						ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(container, EAIResourceRepository.PRIVATE);
 						SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMdd-HHmmssSSS");
-						Resource create = ((ManageableContainer<?>) privateDirectory).create(instance.getConfiguration().getVersion() + "." + instance.getConfiguration().getMinorVersion() + "-" + formatter.format(new Date()) + ".zip", "application/zip");
+						Integer version = instance.getConfiguration().getVersion() == null ? 1 : instance.getConfiguration().getVersion();
+						Integer minorVersion = instance.getConfiguration().getMinorVersion() == null ? 1 : instance.getConfiguration().getMinorVersion();
+						BuildInformation information = new BuildInformation(version, minorVersion, instance.getConfiguration().getFoldersToClean(), instance.getId(), instance.getConfiguration().getSource() == null ? null : instance.getConfiguration().getSource().getId(), ResourceUtils.getURI(source.getRoot()));
+						Resource create = ((ManageableContainer<?>) privateDirectory).create(version + "." + minorVersion + "-" + formatter.format(information.getCreated()) + ".zip", "application/zip");
 						WritableContainer<ByteBuffer> output = ((WritableResource) create).getWritable();
 						try {
-							EAIRepositoryUtils.zip(IOUtils.toOutputStream(output), (ResourceEntry) source.getRoot(), new BuildEntryFilter(instance));
+							ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(output));
+							try {
+								ZipEntry zipEntry = new ZipEntry("build.xml");
+								zip.putNextEntry(zipEntry);
+								information.marshal(zip);
+								EAIRepositoryUtils.zip(zip, (ResourceEntry) source.getRoot(), new BuildEntryFilter(instance));
+							}
+							finally {
+								zip.finish();
+							}
 							builds.getItems().add(create.getName().replace(".zip", ""));
 						}
 						finally {
@@ -291,26 +345,28 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 				@Override
 				public void changed(ObservableValue<? extends Boolean> arg0, Boolean arg1, Boolean arg2) {
 					try {
-						// if we have selected a folder entirely, add it to the "to clean" list
-						if (!leafProperty.get() && arg2) {
-							if (artifact.getConfiguration().getFoldersToClean() == null) {
-								artifact.getConfiguration().setFoldersToClean(new ArrayList<String>());
+						if (!isInitializing()) {
+							if (itemProperty.get().isNode()) {
+								if (arg2 && !artifact.getConfiguration().getArtifacts().contains(itemProperty.get().getId())) {
+									artifact.getConfiguration().getArtifacts().add(itemProperty.get().getId());
+									MainController.getInstance().setChanged();
+								}
+								else if (!arg2 && artifact.getConfiguration().getArtifacts().contains(itemProperty.get().getId())) {
+									artifact.getConfiguration().getArtifacts().remove(itemProperty.get().getId());
+									MainController.getInstance().setChanged();
+								}
 							}
-							if (!artifact.getConfiguration().getFoldersToClean().contains(itemProperty.get().getId())) {
-								artifact.getConfiguration().getFoldersToClean().add(itemProperty.get().getId());
-								MainController.getInstance().setChanged();
+							// if we have selected a folder entirely, add it to the "to clean" list
+							if (!itemProperty.get().isLeaf()) {
+								if (arg2 && !artifact.getConfiguration().getFoldersToClean().contains(itemProperty.get().getId())) {
+									artifact.getConfiguration().getFoldersToClean().add(itemProperty.get().getId());
+									MainController.getInstance().setChanged();
+								}
+								else if (!arg2 && artifact.getConfiguration().getFoldersToClean().contains(itemProperty.get().getId())) {
+									artifact.getConfiguration().getFoldersToClean().remove(itemProperty.get().getId());
+									MainController.getInstance().setChanged();
+								}
 							}
-						}
-						if (artifact.getConfiguration().getArtifacts() == null) {
-							artifact.getConfiguration().setArtifacts(new ArrayList<String>());
-						}
-						if (arg2 && !artifact.getConfiguration().getArtifacts().contains(entry.getId())) {
-							artifact.getConfiguration().getArtifacts().add(entry.getId());
-							MainController.getInstance().setChanged();
-						}
-						else if (!arg2 && artifact.getConfiguration().getArtifacts().contains(entry.getId())) {
-							artifact.getConfiguration().getArtifacts().remove(entry.getId());
-							MainController.getInstance().setChanged();
 						}
 						if (arg2) {
 							tree.forceLoad(DeploymentTreeItem.this, true);
@@ -339,24 +395,33 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 								}
 							}
 							if (someIndeterminate) {
+								if (!isInitializing() && artifact.getConfiguration().getFoldersToClean().contains(parentToReset.itemProperty.get().getId())) {
+									artifact.getConfiguration().getFoldersToClean().remove(parentToReset.itemProperty.get().getId());
+									MainController.getInstance().setChanged();
+								}
 								parentToReset.check.setIndeterminate(true);
 							}
 							else if (noneSelected) {
+								if (!isInitializing() && artifact.getConfiguration().getFoldersToClean().contains(parentToReset.itemProperty.get().getId())) {
+									artifact.getConfiguration().getFoldersToClean().remove(parentToReset.itemProperty.get().getId());
+									MainController.getInstance().setChanged();
+								}
 								parentToReset.check.setIndeterminate(false);
 								parentToReset.check.setSelected(false);
 							}
 							else if (allSelected) {
 								parentToReset.check.setIndeterminate(false);
 								parentToReset.check.setSelected(true);
-								if (artifact.getConfiguration().getFoldersToClean() == null) {
-									artifact.getConfiguration().setFoldersToClean(new ArrayList<String>());
-								}
-								if (!artifact.getConfiguration().getFoldersToClean().contains(itemProperty.get().getId())) {
-									artifact.getConfiguration().getFoldersToClean().add(itemProperty.get().getId());
+								if (!isInitializing() && !artifact.getConfiguration().getFoldersToClean().contains(parentToReset.itemProperty.get().getId())) {
+									artifact.getConfiguration().getFoldersToClean().add(parentToReset.itemProperty.get().getId());
 									MainController.getInstance().setChanged();
 								}
 							}
 							else {
+								if (!isInitializing() && artifact.getConfiguration().getFoldersToClean().contains(parentToReset.itemProperty.get().getId())) {
+									artifact.getConfiguration().getFoldersToClean().remove(parentToReset.itemProperty.get().getId());
+									MainController.getInstance().setChanged();
+								}
 								parentToReset.check.setIndeterminate(true);
 							}
 							parentToReset = parentToReset.parent;
@@ -499,6 +564,93 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		public boolean recurse(ResourceEntry entry) {
 			// always recurse, the acceptance filter will pick out the correct entries
 			return true;
+		}
+	}
+
+	public boolean isInitializing() {
+		return initializing;
+	}
+	
+	@XmlRootElement(name = "buildInformation")
+	public static class BuildInformation {
+		private Date created = new Date();
+		private int version, minorVersion;
+		private List<String> foldersToClean;
+		private String buildId, clusterId;
+		private URI repository;
+		
+		public BuildInformation() {
+			// auto construct
+		}
+		
+		public BuildInformation(int version, int minorVersion, List<String> foldersToClean, String buildId, String clusterId, URI repository) {
+			this.version = version;
+			this.minorVersion = minorVersion;
+			this.foldersToClean = foldersToClean;
+			this.buildId = buildId;
+			this.clusterId = clusterId;
+			this.repository = repository;
+		}
+		
+		public Date getCreated() {
+			return created;
+		}
+		public void setCreated(Date created) {
+			this.created = created;
+		}
+		public int getVersion() {
+			return version;
+		}
+		public void setVersion(int version) {
+			this.version = version;
+		}
+		public int getMinorVersion() {
+			return minorVersion;
+		}
+		public void setMinorVersion(int minorVersion) {
+			this.minorVersion = minorVersion;
+		}
+		public List<String> getFoldersToClean() {
+			return foldersToClean;
+		}
+		public void setFoldersToClean(List<String> foldersToClean) {
+			this.foldersToClean = foldersToClean;
+		}
+		public String getBuildId() {
+			return buildId;
+		}
+		public void setBuildId(String buildId) {
+			this.buildId = buildId;
+		}
+		public String getClusterId() {
+			return clusterId;
+		}
+		public void setClusterId(String clusterId) {
+			this.clusterId = clusterId;
+		}
+		public URI getRepository() {
+			return repository;
+		}
+		public void setRepository(URI repository) {
+			this.repository = repository;
+		}
+		
+		public void marshal(OutputStream output) {
+			try {
+				JAXBContext.newInstance(BuildInformation.class).createMarshaller().marshal(this, output);
+			}
+			catch(JAXBException e) {
+				throw new RuntimeException(e);
+			}
+		}
+		
+		public static BuildInformation unmarshal(InputStream input) {
+			try {
+				return (BuildInformation) JAXBContext.newInstance(BuildInformation.class).createUnmarshaller().unmarshal(input);
+			}
+			catch(JAXBException e) {
+				throw new RuntimeException(e);
+			}
 		}
 	}
 }

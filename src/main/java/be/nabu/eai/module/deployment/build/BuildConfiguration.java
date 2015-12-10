@@ -1,5 +1,6 @@
 package be.nabu.eai.module.deployment.build;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.xml.bind.annotation.XmlRootElement;
@@ -41,6 +42,9 @@ public class BuildConfiguration {
 	}
 
 	public List<String> getArtifacts() {
+		if (artifacts == null) {
+			artifacts = new ArrayList<String>();
+		}
 		return artifacts;
 	}
 	public void setArtifacts(List<String> artifacts) {
@@ -61,6 +65,9 @@ public class BuildConfiguration {
 		this.minorVersion = minorVersion;
 	}
 	public List<String> getFoldersToClean() {
+		if (foldersToClean == null) {
+			foldersToClean = new ArrayList<String>();
+		}
 		return foldersToClean;
 	}
 	public void setFoldersToClean(List<String> foldersToClean) {
