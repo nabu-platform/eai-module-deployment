@@ -3,6 +3,7 @@ package be.nabu.eai.module.deployment.build;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.URI;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -11,13 +12,17 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
+import javax.xml.bind.annotation.XmlAttribute;
 import javax.xml.bind.annotation.XmlRootElement;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,11 +55,14 @@ import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIRepositoryUtils.EntryFilter;
 import be.nabu.eai.repository.EAIResourceRepository;
+import be.nabu.eai.repository.api.ArtifactManager;
+import be.nabu.eai.repository.api.DynamicEntry;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.api.ResourceRepository;
 import be.nabu.eai.repository.resources.RepositoryEntry;
+import be.nabu.eai.repository.util.ClassAdapter;
 import be.nabu.jfx.control.spinner.DoubleSpinner;
 import be.nabu.jfx.control.spinner.Spinner.Alignment;
 import be.nabu.jfx.control.tree.Marshallable;
@@ -73,6 +81,7 @@ import be.nabu.libs.validator.api.ValidationMessage.Severity;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.WritableContainer;
+import be.nabu.utils.io.buffers.bytes.ByteBufferFactory;
 
 public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseArtifactGUIInstance<BuildArtifact>> {
 
@@ -142,9 +151,12 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		initializing = true;
 		// select all the already selected items
 		if (instance.getConfiguration().getArtifacts() != null) {
-			for (String selected : instance.getConfiguration().getArtifacts()) {
-				TreeItem<Entry> resolve = tree.resolve(selected.replace(".", "/"));
+			List<String> ids = new ArrayList<String>(instance.getConfiguration().getArtifacts());
+			for (String selected : ids) {
+				TreeItem<Entry> resolve = tree.resolve(selected.replace(".", "/"), false);
 				if (resolve == null) {
+					instance.getConfiguration().getArtifacts().remove(selected);
+					MainController.getInstance().setChanged();
 					MainController.getInstance().notify(new ValidationMessage(Severity.WARNING, "Can not select: " + selected));
 				}
 				else {
@@ -206,13 +218,7 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 			}
 		});
 		final ListView<String> builds = new ListView<String>();
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) ((ResourceEntry) entry).getContainer().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory != null) {
-			for (Resource child : privateDirectory) {
-				builds.getItems().add(child.getName().replace(".zip", ""));
-			}
-			Collections.sort(builds.getItems());
-		}
+		builds.getItems().addAll(instance.getBuilds());
 		builds.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 		
 		version.getChildren().addAll(new Label("Version: "), versionSpinner, minorVersionSpinner);
@@ -225,23 +231,53 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 					try {
 						ResourceContainer<?> container = ((ResourceEntry) entry).getContainer();
 						ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(container, EAIResourceRepository.PRIVATE);
-						SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMdd-HHmmssSSS");
+						SimpleDateFormat formatter = new SimpleDateFormat("yyyy.MM.dd-HH.mm.ss.SSS");
 						Integer version = instance.getConfiguration().getVersion() == null ? 1 : instance.getConfiguration().getVersion();
 						Integer minorVersion = instance.getConfiguration().getMinorVersion() == null ? 1 : instance.getConfiguration().getMinorVersion();
-						BuildInformation information = new BuildInformation(version, minorVersion, instance.getConfiguration().getFoldersToClean(), instance.getId(), instance.getConfiguration().getSource() == null ? null : instance.getConfiguration().getSource().getId(), ResourceUtils.getURI(source.getRoot()));
+						BuildInformation information = new BuildInformation(version, minorVersion, instance.getId(), instance.getConfiguration().getSource() == null ? null : instance.getConfiguration().getSource().getId(), InetAddress.getLocalHost().getHostName());
+						Set<String> referenceIds = new HashSet<String>();
+						List<ArtifactMetaData> references = new ArrayList<ArtifactMetaData>();
+						for (String artifactId : instance.getConfiguration().getArtifacts()) {
+							// for each reference, check if it is has an originating artifact or not
+							for (String reference : source.getReferences(artifactId)) {
+								if (!referenceIds.contains(reference) && !instance.getConfiguration().getArtifacts().contains(reference)) {
+									referenceIds.add(reference);
+									Entry referenceEntry = source.getEntry(reference);
+									if (referenceEntry instanceof DynamicEntry) {
+										referenceEntry = source.getEntry(((DynamicEntry) referenceEntry).getOriginatingArtifact());
+									}
+									if (referenceEntry != null && referenceEntry.isNode()) {
+										references.add(new ArtifactMetaData(referenceEntry.getId(), referenceEntry.getNode().getEnvironmentId(), referenceEntry.getNode().getVersion(), referenceEntry.getNode().getLastModified(), referenceEntry.getNode().getArtifactManager()));
+									}
+								}
+							}
+						}
+						information.setReferences(references);
+						information.setFoldersToClean(new ArrayList<String>(instance.getConfiguration().getFoldersToClean()));
+						List<ArtifactMetaData> artifacts = new ArrayList<ArtifactMetaData>();
+						for (String artifactId : instance.getConfiguration().getArtifacts()) {
+							be.nabu.eai.repository.api.Node node = source.getNode(artifactId);
+							if (node == null) {
+								throw new IllegalStateException("Can not find node: " + artifactId);
+							}
+							artifacts.add(new ArtifactMetaData(artifactId, node.getEnvironmentId(), node.getVersion(), node.getLastModified(), node.getArtifactManager()));
+						}
+						information.setArtifacts(artifacts);
+						ByteBuffer buffer = ByteBufferFactory.getInstance().newInstance();
+						ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(buffer));
+						try {
+							ZipEntry zipEntry = new ZipEntry("build.xml");
+							zip.putNextEntry(zipEntry);
+							information.marshal(zip);
+							EAIRepositoryUtils.zip(zip, (ResourceEntry) source.getRoot(), new BuildEntryFilter(instance));
+						}
+						finally {
+							zip.close();
+						}
 						Resource create = ((ManageableContainer<?>) privateDirectory).create(version + "." + minorVersion + "-" + formatter.format(information.getCreated()) + ".zip", "application/zip");
 						WritableContainer<ByteBuffer> output = ((WritableResource) create).getWritable();
 						try {
-							ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(output));
-							try {
-								ZipEntry zipEntry = new ZipEntry("build.xml");
-								zip.putNextEntry(zipEntry);
-								information.marshal(zip);
-								EAIRepositoryUtils.zip(zip, (ResourceEntry) source.getRoot(), new BuildEntryFilter(instance));
-							}
-							finally {
-								zip.finish();
-							}
+							output.write(buffer);
 							builds.getItems().add(create.getName().replace(".zip", ""));
 						}
 						finally {
@@ -571,39 +607,92 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		return initializing;
 	}
 	
+	@SuppressWarnings("rawtypes")
+	public static class ArtifactMetaData {
+		private long version;
+		private String id, environmentId;
+		private Date lastModified;
+		private Class<? extends ArtifactManager> artifactManagerClass;
+		
+		public ArtifactMetaData() {
+			// auto construct
+		}
+		public ArtifactMetaData(String id, String environmentId, long version, Date lastModified, Class<? extends ArtifactManager> artifactManagerClass) {
+			this.id = id;
+			this.environmentId = environmentId;
+			this.version = version;
+			this.lastModified = lastModified;
+			this.artifactManagerClass = artifactManagerClass;
+		}
+		public String getId() {
+			return id;
+		}
+		public void setId(String id) {
+			this.id = id;
+		}
+		public long getVersion() {
+			return version;
+		}
+		public void setVersion(long version) {
+			this.version = version;
+		}
+		public String getEnvironmentId() {
+			return environmentId;
+		}
+		public void setEnvironmentId(String environmentId) {
+			this.environmentId = environmentId;
+		}
+		public Date getLastModified() {
+			return lastModified;
+		}
+		public void setLastModified(Date lastModified) {
+			this.lastModified = lastModified;
+		}
+		@XmlAttribute
+		@XmlJavaTypeAdapter(ClassAdapter.class)
+		public Class<? extends ArtifactManager> getArtifactManagerClass() {
+			return artifactManagerClass;
+		}
+		public void getArtifactManagerClass(Class<? extends ArtifactManager> artifactManagerClass) {
+			this.artifactManagerClass = artifactManagerClass;
+		}
+	}
+	
 	@XmlRootElement(name = "buildInformation")
 	public static class BuildInformation {
 		private Date created = new Date();
 		private int version, minorVersion;
-		private List<String> foldersToClean;
 		private String buildId, clusterId;
-		private URI repository;
+		private List<String> foldersToClean;
+		private List<ArtifactMetaData> artifacts, references;
+		private String environmentId;
 		
 		public BuildInformation() {
 			// auto construct
 		}
 		
-		public BuildInformation(int version, int minorVersion, List<String> foldersToClean, String buildId, String clusterId, URI repository) {
+		public BuildInformation(int version, int minorVersion, String buildId, String clusterId, String environmentId) {
 			this.version = version;
 			this.minorVersion = minorVersion;
-			this.foldersToClean = foldersToClean;
 			this.buildId = buildId;
 			this.clusterId = clusterId;
-			this.repository = repository;
+			this.environmentId = environmentId;
 		}
-		
+		@XmlAttribute
 		public Date getCreated() {
 			return created;
 		}
 		public void setCreated(Date created) {
 			this.created = created;
 		}
+		@XmlAttribute
 		public int getVersion() {
 			return version;
 		}
 		public void setVersion(int version) {
 			this.version = version;
 		}
+		@XmlAttribute
 		public int getMinorVersion() {
 			return minorVersion;
 		}
@@ -616,25 +705,40 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		public void setFoldersToClean(List<String> foldersToClean) {
 			this.foldersToClean = foldersToClean;
 		}
+		@XmlAttribute
 		public String getBuildId() {
 			return buildId;
 		}
 		public void setBuildId(String buildId) {
 			this.buildId = buildId;
 		}
+		@XmlAttribute
 		public String getClusterId() {
 			return clusterId;
 		}
 		public void setClusterId(String clusterId) {
 			this.clusterId = clusterId;
 		}
-		public URI getRepository() {
-			return repository;
+		@XmlAttribute
+		public String getEnvironmentId() {
+			return environmentId;
 		}
-		public void setRepository(URI repository) {
-			this.repository = repository;
+		public void setEnvironmentId(String environmentId) {
+			this.environmentId = environmentId;
 		}
-		
+		public List<ArtifactMetaData> getReferences() {
+			return references;
+		}
+		public void setReferences(List<ArtifactMetaData> references) {
+			this.references = references;
+		}
+		public List<ArtifactMetaData> getArtifacts() {
+			return artifacts;
+		}
+		public void setArtifacts(List<ArtifactMetaData> artifacts) {
+			this.artifacts = artifacts;
+		}
+
 		public void marshal(OutputStream output) {
 			try {
 				JAXBContext.newInstance(BuildInformation.class).createMarshaller().marshal(this, output);

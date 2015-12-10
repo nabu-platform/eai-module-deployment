@@ -1,6 +1,7 @@
 package be.nabu.eai.module.deployment.menu;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import javafx.event.ActionEvent;
@@ -28,6 +29,7 @@ import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.api.ArtifactManager;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ExtensibleEntry;
+import be.nabu.eai.repository.api.ModifiableNodeEntry;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.api.ResourceRepository;
 import be.nabu.eai.repository.resources.RepositoryEntry;
@@ -50,51 +52,61 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 						@SuppressWarnings({ "unchecked", "rawtypes" })
 						@Override
 						public void handle(ActionEvent arg0) {
-							ArtifactMerger merger = getMerger(entry);
 							try {
-								ArtifactManager artifactManager = entry.getNode().getArtifactManager().newInstance();
-								if (merger != null) {
-									Entry remoteEntry = repository.getEntry(entry.getId());
-									AnchorPane anchorPane = new AnchorPane();
-									// we need a cloned copy of the source as the merger will modify it
-									List<Validation<?>> messages = new ArrayList<Validation<?>>();
-									Artifact clone = artifactManager.load((ResourceEntry) entry, messages);
-									// if we need to merge, visualize it
-									if (merger.merge(clone, remoteEntry.getNode().getArtifact(), anchorPane, repository)) {
-										HBox box = new HBox();
-										final Button button = new Button("Deploy");
-										button.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
-											@Override
-											public void handle(ActionEvent arg0) {
-												// don't want to trigger it twice...
-												button.setDisable(true);
-												if (!deploy(clone, artifactManager, repository)) {
-													Confirm.confirm(ConfirmType.ERROR, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " failed", null);
-													button.setDisable(false);
-												}
-												else {
-													Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " succeeded", null);
-												}
-											}
-										});
-										box.getChildren().add(button);
-										anchorPane.getChildren().add(box);
-										Tab tab = MainController.getInstance().newTab("Merge: " + entry.getId() + " (" + cluster.getId() + ")");
-										tab.setContent(anchorPane);
+								boolean allReferencesAvailable = true;
+								for (String reference : entry.getRepository().getReferences(entry.getId())) {
+									if (repository.resolve(reference) == null) {
+										allReferencesAvailable = false;
+										Confirm.confirm(ConfirmType.ERROR, "Failed Deploy", "Can not deploy '" + entry.getId() + "', missing reference '" + reference + "' in target environment '" + cluster.getId() + "'", null);
+										break;
 									}
-									// else just deploy
-									else if (!deploy(clone, artifactManager, repository)) {
-										Confirm.confirm(ConfirmType.ERROR, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " failed", null);
+								}
+								if (allReferencesAvailable) {
+									ArtifactMerger merger = getMerger(entry);
+									ArtifactManager artifactManager = entry.getNode().getArtifactManager().newInstance();
+									if (merger != null) {
+										Entry remoteEntry = repository.getEntry(entry.getId());
+										AnchorPane anchorPane = new AnchorPane();
+										// we need a cloned copy of the source as the merger will modify it
+										List<Validation<?>> messages = new ArrayList<Validation<?>>();
+										Artifact clone = artifactManager.load((ResourceEntry) entry, messages);
+										// if we need to merge, visualize it
+										if (merger.merge(clone, remoteEntry.getNode().getArtifact(), anchorPane, repository)) {
+											HBox box = new HBox();
+											final Button button = new Button("Deploy");
+											button.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+												@Override
+												public void handle(ActionEvent arg0) {
+													// don't want to trigger it twice...
+													button.setDisable(true);
+													if (!deploy(clone, artifactManager, repository, entry.getNode().getEnvironmentId(), entry.getNode().getVersion(), entry.getNode().getLastModified())) {
+														Confirm.confirm(ConfirmType.ERROR, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " failed", null);
+														button.setDisable(false);
+													}
+													else {
+														Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " succeeded", null);
+													}
+												}
+											});
+											box.getChildren().add(button);
+											anchorPane.getChildren().add(box);
+											Tab tab = MainController.getInstance().newTab("Merge: " + entry.getId() + " (" + cluster.getId() + ")");
+											tab.setContent(anchorPane);
+										}
+										// else just deploy
+										else if (!deploy(clone, artifactManager, repository, entry.getNode().getEnvironmentId(), entry.getNode().getVersion(), entry.getNode().getLastModified())) {
+											Confirm.confirm(ConfirmType.ERROR, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " failed", null);
+										}
+										else {
+											Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " succeeded", null);
+										}
+									}
+									else if (!deploy(entry.getNode().getArtifact(), artifactManager, repository, entry.getNode().getEnvironmentId(), entry.getNode().getVersion(), entry.getNode().getLastModified())) {
+										Confirm.confirm(ConfirmType.ERROR, "Deployment", "Deployment of " + entry.getId() + " to " + cluster.getId() + " failed", null);
 									}
 									else {
-										Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " succeeded", null);
+										Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + entry.getId() + " to " + cluster.getId() + " succeeded", null);
 									}
-								}
-								else if (!deploy(entry.getNode().getArtifact(), artifactManager, repository)) {
-									Confirm.confirm(ConfirmType.ERROR, "Deployment", "Deployment of " + entry.getId() + " to " + cluster.getId() + " failed", null);
-								}
-								else {
-									Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + entry.getId() + " to " + cluster.getId() + " succeeded", null);
 								}
 							}
 							catch (Exception e) {
@@ -112,7 +124,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 		return null;
 	}
 	
-	public <T extends Artifact> boolean deploy(T artifact, ArtifactManager<T> artifactManager, ResourceRepository targetRepository) {
+	public static <T extends Artifact> boolean deploy(T artifact, ArtifactManager<T> artifactManager, ResourceRepository targetRepository, String environmentId, long version, Date lastModified) {
 		try {
 			// get the parent directory
 			Entry parent = artifact.getId().contains(".") 
@@ -129,6 +141,9 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 			}
 			RepositoryEntry entry = ((ExtensibleEntry) parent).createNode(name, artifactManager);
 			artifactManager.save(entry, artifact);
+			if (entry instanceof ModifiableNodeEntry) {
+				((ModifiableNodeEntry) entry).updateNodeContext(environmentId, version, lastModified);
+			}
 		}
 		catch (Exception e) {
 			logger.error("Could not deploy " + artifact.getId(), e);
