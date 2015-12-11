@@ -55,6 +55,7 @@ import be.nabu.eai.module.deployment.build.BuildArtifactGUIManager.BuildInformat
 import be.nabu.eai.module.deployment.menu.DeployContextMenu;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIResourceRepository;
+import be.nabu.eai.repository.api.DynamicEntry;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ExtensibleEntry;
 import be.nabu.eai.repository.api.ModifiableNodeEntry;
@@ -525,8 +526,8 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 									Entry folder = target.getEntry(folderToClean);
 									if (folder != null) {
 										for (Entry entry : folder) {
-											// if the folder is set to be cleaned and it is not in the artifacts-to-be-deployed, it will be removed
-											if (!artifactIds.contains(entry.getId())) {
+											// if the folder is set to be cleaned and it is not in the artifacts-to-be-deployed, it will be removed (ignore dynamics & folders)
+											if (entry.isNode() && !(entry instanceof DynamicEntry) && !artifactIds.contains(entry.getId())) {
 												removed.getItems().add(entry.getId());
 											}
 										}
@@ -623,6 +624,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			tab.setId(arg2.getId());
 			tab.setContent(arg2.getPane());
 			tabs.getTabs().add(tab);
+			tabs.getSelectionModel().select(tab);
 		}
 	}
 	
