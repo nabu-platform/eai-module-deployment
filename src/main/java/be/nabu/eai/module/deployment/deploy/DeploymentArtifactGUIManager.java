@@ -44,11 +44,13 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import be.nabu.eai.developer.MainController;
+import be.nabu.eai.developer.api.ArtifactDiffer;
 import be.nabu.eai.developer.api.ArtifactMerger;
 import be.nabu.eai.developer.managers.base.BaseArtifactGUIInstance;
 import be.nabu.eai.developer.managers.base.BaseGUIManager;
 import be.nabu.eai.developer.managers.util.SimpleProperty;
 import be.nabu.eai.module.cluster.ClusterArtifact;
+import be.nabu.eai.module.cluster.menu.ClusterContextMenu;
 import be.nabu.eai.module.deployment.build.BuildArtifact;
 import be.nabu.eai.module.deployment.build.BuildArtifactGUIManager.ArtifactMetaData;
 import be.nabu.eai.module.deployment.build.BuildArtifactGUIManager.BuildInformation;
@@ -60,6 +62,7 @@ import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ExtensibleEntry;
 import be.nabu.eai.repository.api.ModifiableNodeEntry;
 import be.nabu.eai.repository.api.Node;
+import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.api.ResourceRepository;
 import be.nabu.eai.repository.resources.RepositoryEntry;
@@ -374,6 +377,33 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		final ListView<String> added = new ListView<String>();
 		final ListView<String> missing = new ListView<String>();
 		
+		updated.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<String>() {
+			@Override
+			public void changed(ObservableValue<? extends String> arg0, String arg1, String arg2) {
+				if (mergedRepository.get() != null && arg2 != null) {
+					try {
+						openCompare(mergedRepository.get(), artifact.getConfiguration().getTarget().getClusterRepository(), tabs, arg2);
+					}
+					catch (Exception e) {
+						logger.error("Could not open compare", e);
+					}
+				}
+			}
+		});
+		updated.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
+			@Override
+			public void handle(MouseEvent arg0) {
+				if (mergedRepository.get() != null && updated.getSelectionModel().getSelectedItem() != null) {
+					try {
+						openCompare(mergedRepository.get(), artifact.getConfiguration().getTarget().getClusterRepository(), tabs, updated.getSelectionModel().getSelectedItem());
+					}
+					catch (Exception e) {
+						logger.error("Could not open compare", e);
+					}
+				}
+			}
+		});
+		
 		final Button prepare = new Button("Prepare");
 		final Button createDeployment = new Button("Create");
 		final Button cancelDeployment = new Button("Cancel");
@@ -611,7 +641,38 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		return artifact;
 	}
 	
-	private void openMerge(final TabPane tabs, PendingMerge arg2) {
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private void openCompare(Repository source, Repository target, TabPane tabs, String id) throws IOException, ParseException {
+		boolean alreadyOpen = false;
+		for (Tab tab : tabs.getTabs()) {
+			if (tab.getId().equals("Diff: " + id)) {
+				alreadyOpen = true;
+				tabs.getSelectionModel().select(tab);
+				break;
+			}
+		}
+		if (!alreadyOpen) {
+			Entry entry = source.getEntry(id);
+			if (entry != null && entry.isNode()) {
+				ArtifactDiffer differ = ClusterContextMenu.getDiffer(entry);
+				if (differ != null) {
+					Entry targetEntry = target.getEntry(id);
+					if (targetEntry != null) {
+						AnchorPane pane = new AnchorPane();
+						if (differ.diff(entry.getNode().getArtifact(), targetEntry.getNode().getArtifact(), pane)) {
+							Tab tab = new Tab("Diff: " + id);
+							tab.setId("Diff: " + id);
+							tab.setContent(pane);
+							tabs.getTabs().add(tab);
+							tabs.getSelectionModel().select(tab);
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	private void openMerge(TabPane tabs, PendingMerge arg2) {
 		boolean alreadyOpen = false;
 		for (Tab tab : tabs.getTabs()) {
 			if (tab.getId().equals(arg2.getId())) {
