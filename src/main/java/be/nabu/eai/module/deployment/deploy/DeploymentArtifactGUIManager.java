@@ -18,12 +18,14 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TitledPane;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.ArtifactMerger;
@@ -105,6 +107,16 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 
 	@Override
 	protected DeploymentArtifact display(MainController controller, AnchorPane pane, Entry entry) throws IOException, ParseException {
+		ScrollPane scroll = new ScrollPane();
+		AnchorPane.setBottomAnchor(scroll, 0d);
+		AnchorPane.setTopAnchor(scroll, 0d);
+		AnchorPane.setLeftAnchor(scroll, 0d);
+		AnchorPane.setRightAnchor(scroll, 0d);
+		AnchorPane scrollRoot = new AnchorPane();
+		scrollRoot.setPrefSize(Region.USE_COMPUTED_SIZE, Region.USE_COMPUTED_SIZE);
+		scroll.setContent(scrollRoot);
+		scrollRoot.prefWidthProperty().bind(scroll.widthProperty());
+		
 		final DeploymentArtifact artifact = (DeploymentArtifact) entry.getNode().getArtifact();
 		
 		final VBox vbox = new VBox();
@@ -145,6 +157,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 					}
 					if (!alreadyOpen) {
 						Tab tab = new Tab(arg2.getId());
+						tab.setClosable(false);
 						tab.setId(arg2.getId());
 						tab.setContent(arg2.getPane());
 						tabs.getTabs().add(tab);
@@ -153,6 +166,8 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			}
 		});
 		final Button prepare = new Button("Prepare");
+		final Button createDeployment = new Button("Create");
+		final Button cancelDeployment = new Button("Cancel");
 		prepare.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
 			@SuppressWarnings({ "rawtypes", "unchecked" })
 			@Override
@@ -178,6 +193,8 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 					builds.setDisable(true);
 					refreshBuilds.setDisable(true);
 					prepare.setDisable(true);
+					createDeployment.setDisable(false);
+					cancelDeployment.setDisable(false);
 				}
 				catch (Exception e) {
 					logger.error("Could not create merged repository", e);
@@ -185,7 +202,6 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			}
 		});
 		prepare.setDisable(true);
-		final Button createDeployment = new Button("Create Deployment");
 		createDeployment.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
 			@Override
 			public void handle(MouseEvent arg0) {
@@ -196,7 +212,6 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			}
 		});
 		createDeployment.setDisable(true);
-		final Button cancelDeployment = new Button("Cancel");
 		cancelDeployment.setDisable(true);
 		cancelDeployment.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
 			@Override
@@ -209,7 +224,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		});
 		
 		HBox buildBox = new HBox();
-		buildBox.getChildren().addAll(new Label("Builds: "), builds, refreshBuilds, prepare, createDeployment);
+		buildBox.getChildren().addAll(new Label("Builds: "), builds, refreshBuilds, prepare, createDeployment, cancelDeployment);
 		
 		final ListView<String> unchanged = new ListView<String>();
 		final ListView<String> updated = new ListView<String>();
@@ -332,12 +347,20 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 				missingPane.setText("Missing (" + missing.getItems().size() + ")");				
 			}
 		});
+		final TitledPane pendingPane = new TitledPane("Pending Merge (0)", pendingMerges);
+		pendingMerges.itemsProperty().get().addListener(new ListChangeListener<PendingMerge>() {
+			@Override
+			public void onChanged(javafx.collections.ListChangeListener.Change<? extends PendingMerge> arg0) {
+				pendingPane.setText("Pending Merge (" + pendingMerges.getItems().size() + ")");				
+			}
+		});
 		
-		accordion.getPanes().addAll(unchangedPane, removedPane, addedPane, updatedPane, missingPane);
+		accordion.getPanes().addAll(unchangedPane, removedPane, addedPane, updatedPane, missingPane, pendingPane);
 		vbox.getChildren().addAll(deployButtons, buildBox, accordion, tabs);
 		AnchorPane.setLeftAnchor(vbox, 0d);
 		AnchorPane.setRightAnchor(vbox, 0d);
-		pane.getChildren().add(vbox);
+		scrollRoot.getChildren().add(vbox);
+		pane.getChildren().add(scroll);
 		return artifact;
 	}
 	
@@ -370,6 +393,10 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		}
 		public void setId(String id) {
 			this.id = id;
+		}
+		@Override
+		public String toString() {
+			return id;
 		}
 	}
 	
