@@ -616,6 +616,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		for (Tab tab : tabs.getTabs()) {
 			if (tab.getId().equals(arg2.getId())) {
 				alreadyOpen = true;
+				tabs.getSelectionModel().select(tab);
 				break;
 			}
 		}
