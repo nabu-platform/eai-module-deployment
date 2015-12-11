@@ -394,7 +394,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 									AnchorPane anchorPane = new AnchorPane();
 									Artifact mergedArtifact = sourceEntry.getNode().getArtifact();
 									if (merger.merge(mergedArtifact, targetEntry == null || !targetEntry.isNode() ? null : targetEntry.getNode().getArtifact(), anchorPane, mergedRepository.get())) {
-										if (added.getItems().contains(artifactMeta.getId())) {
+										if (added.getItems().contains(artifactMeta.getId()) || updated.getItems().contains(artifactMeta.getId())) {
 											pendingRequiredMerges.getItems().add(new PendingMerge((ResourceEntry) sourceEntry, mergedArtifact, anchorPane));
 										}
 										else {
