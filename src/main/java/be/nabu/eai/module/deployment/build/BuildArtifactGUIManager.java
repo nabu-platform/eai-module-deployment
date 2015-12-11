@@ -20,6 +20,7 @@ import java.util.zip.ZipOutputStream;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
+import javax.xml.bind.Marshaller;
 import javax.xml.bind.annotation.XmlAttribute;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
@@ -240,11 +241,19 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 						for (String artifactId : instance.getConfiguration().getArtifacts()) {
 							// for each reference, check if it is has an originating artifact or not
 							for (String reference : source.getReferences(artifactId)) {
+								// we skip references like [B pertaining to java byte arrays
+								if (reference == null || reference.startsWith("[")) {
+									continue;
+								}
 								if (!referenceIds.contains(reference) && !instance.getConfiguration().getArtifacts().contains(reference)) {
 									referenceIds.add(reference);
 									Entry referenceEntry = source.getEntry(reference);
 									if (referenceEntry instanceof DynamicEntry) {
 										referenceEntry = source.getEntry(((DynamicEntry) referenceEntry).getOriginatingArtifact());
+										// it could be that the parent is in the deployment 
+										if (referenceEntry != null && instance.getConfiguration().getArtifacts().contains(referenceEntry.getId())) {
+											continue;
+										}
 									}
 									if (referenceEntry != null && referenceEntry.isNode()) {
 										references.add(new ArtifactMetaData(referenceEntry.getId(), referenceEntry.getNode().getEnvironmentId(), referenceEntry.getNode().getVersion(), referenceEntry.getNode().getLastModified(), referenceEntry.getNode().getArtifactManager()));
@@ -741,7 +750,9 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 
 		public void marshal(OutputStream output) {
 			try {
-				JAXBContext.newInstance(BuildInformation.class).createMarshaller().marshal(this, output);
+				Marshaller marshaller = JAXBContext.newInstance(BuildInformation.class).createMarshaller();
+				marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
+				marshaller.marshal(this, output);
 			}
 			catch(JAXBException e) {
 				throw new RuntimeException(e);

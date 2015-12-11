@@ -12,7 +12,6 @@ import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceRepository;
 import be.nabu.eai.repository.artifacts.jaxb.JAXBArtifact;
 import be.nabu.libs.resources.ResourceUtils;
-import be.nabu.libs.resources.api.ManageableContainer;
 import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
@@ -50,17 +49,11 @@ public class BuildArtifact extends JAXBArtifact<BuildConfiguration> {
 			return null;
 		}
 		ResourceContainer<?> root = new MemoryDirectory();
-		ZIPArchive archive = new ZIPArchive();
-		try {
-			archive.setSource(child);
-			ResourceUtils.copy(archive, (ManageableContainer<?>) root);
-			RemoteRepository remoteRepository = new RemoteRepository(parent == null ? (ResourceRepository) getRepository() : parent, root);
-			remoteRepository.setAllowLocalLookup(allowChainedLookup);
-			return remoteRepository;
-		}
-		finally {
-			archive.close();
-		}
+		ResourceUtils.unzip(child, root);
+		RemoteRepository remoteRepository = new RemoteRepository(parent == null ? (ResourceRepository) getRepository() : parent, root);
+		remoteRepository.setAllowLocalLookup(allowChainedLookup);
+		remoteRepository.start();
+		return remoteRepository;
 	}
 	
 	public BuildInformation getBuildInformation(String id) throws IOException {
