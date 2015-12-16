@@ -51,12 +51,12 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 			Menu menu = new Menu("Deploy");
 			for (final ClusterArtifact cluster : entry.getRepository().getArtifacts(ClusterArtifact.class)) {
 				MenuItem item = new MenuItem(cluster.getId());
-				final ResourceRepository repository = cluster.getClusterRepository();
-				if (repository != null) {
-					item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
-						@SuppressWarnings({ "unchecked", "rawtypes" })
-						@Override
-						public void handle(ActionEvent arg0) {
+				item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					@SuppressWarnings({ "unchecked", "rawtypes" })
+					@Override
+					public void handle(ActionEvent arg0) {
+						final ResourceRepository repository = cluster.getClusterRepository();
+						if (repository != null) {
 							try {
 								boolean allReferencesAvailable = true;
 								for (String reference : entry.getRepository().getReferences(entry.getId())) {
@@ -118,9 +118,9 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 								logger.error("Could not compare " + entry.getId(), e);
 							}
 						}
-					});
-					menu.getItems().add(item);
-				}
+					}
+				});
+				menu.getItems().add(item);
 			}
 			if (!menu.getItems().isEmpty()) {
 				return menu;

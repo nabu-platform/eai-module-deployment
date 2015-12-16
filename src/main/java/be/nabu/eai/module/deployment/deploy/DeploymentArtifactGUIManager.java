@@ -462,9 +462,16 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 					information.setCreated(new Date());
 					List<String> merged = new ArrayList<String>();
 					for (PendingMerge merge : pendingPossibleMerges.getItems()) {
+						if (!merge.isSaved()) {
+							merge.save();
+						}
 						merged.add(merge.getId());
 					}
 					for (PendingMerge merge : pendingRequiredMerges.getItems()) {
+						if (!merge.isSaved()) {
+							logger.warn("No merge performed for required merge: " + merge.getId());
+							merge.save();
+						}
 						merged.add(merge.getId());
 					}
 					information.setMerged(merged);
@@ -835,6 +842,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		private boolean merged;
 		private Artifact artifact;
 		private ResourceEntry entry;
+		private boolean saved;
 
 		public PendingMerge(ResourceEntry entry, Artifact artifact, AnchorPane pane) {
 			this.entry = entry;
@@ -875,10 +883,15 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 				if (entry instanceof ModifiableNodeEntry) {
 					((ModifiableNodeEntry) entry).updateNodeContext(environmentId, version, lastModified);
 				}
+				saved = true;
 			}
 			catch (Exception e) {
 				logger.error("Could not save merged version of: " + artifact.getId());
 			}
+		}
+
+		public boolean isSaved() {
+			return saved;
 		}
 	}
 	
