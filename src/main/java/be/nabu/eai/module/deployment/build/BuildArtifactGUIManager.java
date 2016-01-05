@@ -100,7 +100,7 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 
 	@Override
 	protected BaseArtifactGUIInstance<BuildArtifact> newGUIInstance(Entry entry) {
-		return new BaseArtifactGUIInstance<BuildArtifact>(this, getArtifactManager(), entry);
+		return new BaseArtifactGUIInstance<BuildArtifact>(this, entry);
 	}
 
 	@Override

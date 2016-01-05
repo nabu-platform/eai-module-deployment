@@ -99,7 +99,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 
 	@Override
 	protected BaseArtifactGUIInstance<DeploymentArtifact> newGUIInstance(Entry entry) {
-		return new BaseArtifactGUIInstance<DeploymentArtifact>(this, getArtifactManager(), entry) {
+		return new BaseArtifactGUIInstance<DeploymentArtifact>(this, entry) {
 			@Override
 			public List<Validation<?>> save() throws IOException {
 				for (PendingMerge merge : pendingPossibleMerges.getItems()) {
