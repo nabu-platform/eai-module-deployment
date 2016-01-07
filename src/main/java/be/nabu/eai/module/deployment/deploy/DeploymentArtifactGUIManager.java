@@ -153,6 +153,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 
 	@SuppressWarnings("unchecked")
 	private void deploy(ResourceRepository source, ResourceRepository target, DeploymentInformation deploymentInformation) {
+		List<String> elementsToReload = new ArrayList<String>();
 		for (ArtifactMetaData meta : deploymentInformation.getBuild().getArtifacts()) {
 			DeploymentResult result = new DeploymentResult();
 			result.setType(DeploymentResultType.ARTIFACT);
@@ -164,7 +165,8 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			else {
 				Node resolved = entry.getNode();
 				try {
-					DeployContextMenu.deploy((ResourceEntry) entry, resolved.getArtifact(), resolved.getArtifactManager().newInstance(), target, meta.getEnvironmentId(), meta.getVersion(), meta.getLastModified());
+					DeployContextMenu.deploy((ResourceEntry) entry, resolved.getArtifact(), resolved.getArtifactManager().newInstance(), target, meta.getEnvironmentId(), meta.getVersion(), meta.getLastModified(), false);
+					elementsToReload.add(meta.getId());
 				}
 				catch (Exception e) {
 					StringWriter writer = new StringWriter();
@@ -177,6 +179,8 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			result.setStopped(new Date());
 			deploymentInformation.getResults().add(result);
 		}
+		logger.info("Deployment performed, reloading local cluster repository");
+		target.reloadAll(elementsToReload);
 	}
 	
 	private void reload(ClusterArtifact artifact, DeploymentInformation deploymentInformation) {

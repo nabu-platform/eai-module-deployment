@@ -129,9 +129,9 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 		return null;
 	}
 	
-	public static <T extends Artifact> boolean deployQuietly(ResourceEntry source, T artifact, ArtifactManager<T> artifactManager, ResourceRepository targetRepository, String environmentId, long version, Date lastModified) {
+	private static <T extends Artifact> boolean deployQuietly(ResourceEntry source, T artifact, ArtifactManager<T> artifactManager, ResourceRepository targetRepository, String environmentId, long version, Date lastModified) {
 		try {
-			return deploy(source, artifact, artifactManager, targetRepository, environmentId, version, lastModified) != null;
+			return deploy(source, artifact, artifactManager, targetRepository, environmentId, version, lastModified, true) != null;
 		}
 		catch (Exception e) {
 			logger.error("Could not deploy: " + artifact.getId(), e);
@@ -139,7 +139,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 		}
 	}
 	
-	public static <T extends Artifact> ResourceEntry deploy(ResourceEntry source, T artifact, ArtifactManager<T> artifactManager, ResourceRepository targetRepository, String environmentId, long version, Date lastModified) throws IOException {
+	public static <T extends Artifact> ResourceEntry deploy(ResourceEntry source, T artifact, ArtifactManager<T> artifactManager, ResourceRepository targetRepository, String environmentId, long version, Date lastModified, boolean reload) throws IOException {
 		// get the parent directory
 		Entry parent = artifact.getId().contains(".") 
 			? EAIRepositoryUtils.getDirectoryEntry(targetRepository, artifact.getId().replaceAll("\\.[^.]+$", ""), true)
@@ -153,7 +153,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 		if (parent.getChild(name) != null) {
 			((ExtensibleEntry) parent).deleteChild(name, false);
 		}
-		RepositoryEntry entry = ((ExtensibleEntry) parent).createNode(name, artifactManager);
+		RepositoryEntry entry = ((ExtensibleEntry) parent).createNode(name, artifactManager, reload);
 		// first copy all the files from the source
 		for (Resource resource : source.getContainer()) {
 			if (!(resource instanceof ResourceContainer) || source.getRepository().isInternal((ResourceContainer<?>) resource)) {

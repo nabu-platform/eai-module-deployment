@@ -768,4 +768,28 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 			}
 		}
 	}
+	
+	public static void sort(List<String> artifacts, Repository repository) {
+		while(true) {
+			boolean changed = false;
+			for (int i = 0; i < artifacts.size(); i++) {
+				int currentIndex = i;
+				for (String reference : repository.getReferences(artifacts.get(i))) {
+					if (repository.getReferences(reference).contains(artifacts.get(currentIndex))) {
+						throw new RuntimeException("Circular dependency detected between '" + artifacts.get(currentIndex) + "' and '" + reference + "'");
+					}
+					int indexOf = artifacts.indexOf(reference);
+					if (indexOf >= 0 && indexOf < currentIndex) {
+						changed = true;
+						artifacts.set(indexOf, artifacts.get(currentIndex));
+						artifacts.set(currentIndex, reference);
+						currentIndex = indexOf;
+					}
+				}
+			}
+			if (!changed) {
+				break;
+			}
+		}
+	}
 }
