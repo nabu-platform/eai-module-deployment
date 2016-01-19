@@ -60,7 +60,8 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 							try {
 								boolean allReferencesAvailable = true;
 								for (String reference : entry.getRepository().getReferences(entry.getId())) {
-									if (repository.resolve(reference) == null) {
+									// if it is a node in the original repository but not available in the target, stop
+									if (entry.getRepository().getNode(reference) != null && repository.resolve(reference) == null) {
 										allReferencesAvailable = false;
 										Confirm.confirm(ConfirmType.ERROR, "Failed Deploy", "Can not deploy '" + entry.getId() + "', missing reference '" + reference + "' in target environment '" + cluster.getId() + "'", null);
 										break;
