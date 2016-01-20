@@ -77,7 +77,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 										List<Validation<?>> messages = new ArrayList<Validation<?>>();
 										Artifact clone = artifactManager.load((ResourceEntry) entry, messages);
 										// if we need to merge, visualize it
-										if (merger.merge(clone, remoteEntry.getNode().getArtifact(), anchorPane, repository)) {
+										if (merger.merge(clone, remoteEntry == null ? null : remoteEntry.getNode().getArtifact(), anchorPane, repository)) {
 											HBox box = new HBox();
 											final Button button = new Button("Deploy");
 											button.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
