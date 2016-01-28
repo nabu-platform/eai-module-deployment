@@ -104,6 +104,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 											Confirm.confirm(ConfirmType.ERROR, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " failed", null);
 										}
 										else {
+											cluster.reload(clone.getId());
 											Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " succeeded", null);
 										}
 									}
@@ -111,6 +112,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 										Confirm.confirm(ConfirmType.ERROR, "Deployment", "Deployment of " + entry.getId() + " to " + cluster.getId() + " failed", null);
 									}
 									else {
+										cluster.reload(entry.getId());
 										Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + entry.getId() + " to " + cluster.getId() + " succeeded", null);
 									}
 								}
