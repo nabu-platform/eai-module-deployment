@@ -90,6 +90,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 														button.setDisable(false);
 													}
 													else {
+														cluster.reload(clone.getId());
 														Confirm.confirm(ConfirmType.INFORMATION, "Deployment", "Deployment of " + clone.getId() + " to " + cluster.getId() + " succeeded", null);
 													}
 												}
