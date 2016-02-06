@@ -175,7 +175,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public static ArtifactMerger<?> getMerger(Entry entry) {
-		List<Class<ArtifactMerger>> mergers = entry.getRepository().getImplementationsFor(ArtifactMerger.class);
+		List<Class<ArtifactMerger>> mergers = EAIRepositoryUtils.getImplementationsFor(entry.getRepository().getClassLoader(), ArtifactMerger.class);
 		for (Class<ArtifactMerger> merger : mergers) {
 			try {
 				ArtifactMerger instance = merger.newInstance();
