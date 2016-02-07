@@ -90,9 +90,14 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 	private boolean initializing;
 	
 	public BuildArtifactGUIManager() {
-		super("Build", BuildArtifact.class, new BuildArtifactManager());
+		super("Build Plan", BuildArtifact.class, new BuildArtifactManager());
 	}
 
+	@Override
+	public String getCategory() {
+		return "Environments";
+	}
+	
 	@Override
 	protected List<Property<?>> getCreateProperties() {
 		return Arrays.asList(new SimpleProperty<ClusterArtifact>("Source", ClusterArtifact.class, false));

@@ -86,9 +86,14 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 	private ListView<PendingMerge> pendingRequiredMerges = new ListView<PendingMerge>();
 	
 	public DeploymentArtifactGUIManager() {
-		super("Deployment", DeploymentArtifact.class, new DeploymentArtifactManager());
+		super("Deployment Plan", DeploymentArtifact.class, new DeploymentArtifactManager());
 	}
 
+	@Override
+	public String getCategory() {
+		return "Environments";
+	}
+	
 	@Override
 	protected List<Property<?>> getCreateProperties() {
 		return Arrays.asList(
