@@ -79,7 +79,7 @@ import be.nabu.utils.io.IOUtils;
 
 public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtifact, BaseArtifactGUIInstance<DeploymentArtifact>> {
 
-	private Logger logger = LoggerFactory.getLogger(getClass());
+	private static Logger logger = LoggerFactory.getLogger(DeploymentArtifactGUIManager.class);
 	private ObjectProperty<ResourceRepository> mergedRepository = new SimpleObjectProperty<ResourceRepository>();
 	private BuildInformation buildInformation;
 	private ListView<PendingMerge> pendingPossibleMerges = new ListView<PendingMerge>();
@@ -156,8 +156,37 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		return artifact;
 	}
 
+	public static DeploymentInformation deployBuild(Resource buildZip, ResourceRepository target) throws IOException {
+		BuildInformation buildInformation = BuildArtifact.getBuildInformation(buildZip);
+		if (buildInformation == null) {
+			throw new IllegalArgumentException("Not a valid build zip");
+		}
+		DeploymentInformation information = new DeploymentInformation();
+		information.setTargetId("$local");
+		information.setDeploymentId(buildInformation.getBuildId());
+		information.setBuild(buildInformation);
+		information.setAdded(new ArrayList<String>());
+		information.setUnchanged(new ArrayList<String>());
+		information.setRemoved(new ArrayList<String>());
+		information.setMissing(new ArrayList<String>());
+		information.setUpdated(new ArrayList<String>());
+		information.setMerged(new ArrayList<String>());
+		information.setCreated(new Date());
+		cleanFolders(target, information);
+		deploy(DeploymentArtifact.getAsRepository(target, true, buildZip), target, information);
+		String commonToReload = getCommonToReload(information);
+		if (commonToReload == null) {
+			target.reloadAll();
+		}
+		else {
+			target.reload(commonToReload);
+		}
+		information.setDeployed(new Date());
+		return information;
+	}
+	
 	@SuppressWarnings("unchecked")
-	private void deploy(ResourceRepository source, ResourceRepository target, DeploymentInformation deploymentInformation) {
+	private static void deploy(ResourceRepository source, ResourceRepository target, DeploymentInformation deploymentInformation) {
 		List<String> elementsToReload = new ArrayList<String>();
 		for (ArtifactMetaData meta : deploymentInformation.getBuild().getArtifacts()) {
 			DeploymentResult result = new DeploymentResult();
@@ -189,6 +218,17 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 	}
 	
 	private void reload(ClusterArtifact artifact, DeploymentInformation deploymentInformation) {
+		String commonToReload = getCommonToReload(deploymentInformation);
+		if (commonToReload == null) {
+			artifact.reloadAll();
+		}
+		else {
+			artifact.reload(commonToReload);
+		}
+		artifact.reload();
+	}
+	
+	public static String getCommonToReload(DeploymentInformation deploymentInformation) {
 		List<String> foldersToReload = new ArrayList<String>();
 		for (DeploymentResult succeeded : deploymentInformation.getResults()) {
 			// only reload successful artifact deployments
@@ -235,16 +275,10 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 				break;
 			}
 		}
-		if (rootRefresh) {
-			artifact.reloadAll();
-		}
-		else {
-			artifact.reload(common);
-		}
-		artifact.reload();
+		return rootRefresh ? null : common;
 	}
 	
-	private void cleanFolders(ResourceRepository target, DeploymentInformation deploymentInformation) {
+	private static void cleanFolders(ResourceRepository target, DeploymentInformation deploymentInformation) {
 		for (String folderToClean : deploymentInformation.getBuild().getFoldersToClean()) {
 			DeploymentResult result = new DeploymentResult();
 			result.setType(DeploymentResultType.FOLDER);

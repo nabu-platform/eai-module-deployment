@@ -62,6 +62,10 @@ public class BuildArtifact extends JAXBArtifact<BuildConfiguration> {
 			return null;
 		}
 		Resource child = privateDirectory.getChild(id + ".zip");
+		return getBuildInformation(child);
+	}
+
+	public static BuildInformation getBuildInformation(Resource child) throws IOException {
 		ZIPArchive archive = new ZIPArchive();
 		try {
 			archive.setSource(child);

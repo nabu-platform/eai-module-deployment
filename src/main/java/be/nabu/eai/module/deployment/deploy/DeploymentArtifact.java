@@ -65,9 +65,14 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 		if (!(child instanceof ReadableResource)) {
 			return null;
 		}
+		return getAsRepository(parent == null ? (ResourceRepository) getRepository() : parent, allowChainedLookup, child);
+	}
+
+
+	public static ResourceRepository getAsRepository(ResourceRepository parent, boolean allowChainedLookup, Resource child) throws IOException {
 		ResourceContainer<?> root = new MemoryDirectory();
 		ResourceUtils.unzip(child, root);
-		RemoteRepository remoteRepository = new RemoteRepository(parent == null ? (ResourceRepository) getRepository() : parent, root);
+		RemoteRepository remoteRepository = new RemoteRepository(parent, root);
 		remoteRepository.setAllowLocalLookup(allowChainedLookup);
 		remoteRepository.start();
 		return remoteRepository;
