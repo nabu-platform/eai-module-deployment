@@ -23,11 +23,13 @@ import javax.xml.bind.annotation.XmlRootElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javafx.application.Platform;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.ListChangeListener;
+import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.scene.control.Accordion;
 import javafx.scene.control.Button;
@@ -324,41 +326,45 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		final ComboBox<String> deploys = new ComboBox<String>();
 		deploys.getItems().addAll(artifact.getDeployments());
 		Button deploy = new Button("Deploy");
-		deploy.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
+		deploy.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
-			public void handle(MouseEvent arg0) {
+			public void handle(ActionEvent arg0) {
 				String deploymentId = deploys.getSelectionModel().getSelectedItem();
 				if (deploymentId != null) {
-					try {
-						DeploymentInformation deploymentInformation = artifact.getDeploymentInformation(deploymentId);
-						if (deploymentInformation != null) {
-							ResourceRepository target = artifact.getConfiguration().getTarget().getClusterRepository();
-							ResourceRepository source = artifact.getDeployment(deploymentId, target, true);
-							if (source != null) {
-								deploymentInformation.setResults(new ArrayList<DeploymentResult>());
-								logger.info("Cleaning folder...");
-								cleanFolders(target, deploymentInformation);
-								logger.info("Deploying...");
-								deploy(source, target, deploymentInformation);
-								logger.info("Reloading remote servers...");
-								reload(artifact.getConfiguration().getTarget(), deploymentInformation);
-								deploymentInformation.setDeployed(new Date());
-								ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(artifact.getDirectory(), EAIResourceRepository.PRIVATE);
-								SimpleDateFormat formatter = new SimpleDateFormat("yyyy.MM.dd-HH.mm.ss.SSS");
-								Resource create = ((ManageableContainer<?>) privateDirectory).create(deploymentId + "-" + formatter.format(deploymentInformation.getDeployed()) + ".xml", "application/xml");
-								OutputStream output = new BufferedOutputStream(IOUtils.toOutputStream(((WritableResource) create).getWritable()));
-								try {
-									deploymentInformation.marshal(output);
-								}
-								finally {
-									output.close();
+					MainController.getInstance().offload(new Runnable() {
+						public void run() {
+							try {
+								DeploymentInformation deploymentInformation = artifact.getDeploymentInformation(deploymentId);
+								if (deploymentInformation != null) {
+									ResourceRepository target = artifact.getConfiguration().getTarget().getClusterRepository();
+									ResourceRepository source = artifact.getDeployment(deploymentId, target, true);
+									if (source != null) {
+										deploymentInformation.setResults(new ArrayList<DeploymentResult>());
+										logger.info("Cleaning folder...");
+										cleanFolders(target, deploymentInformation);
+										logger.info("Deploying...");
+										deploy(source, target, deploymentInformation);
+										logger.info("Reloading remote servers...");
+										reload(artifact.getConfiguration().getTarget(), deploymentInformation);
+										deploymentInformation.setDeployed(new Date());
+										ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(artifact.getDirectory(), EAIResourceRepository.PRIVATE);
+										SimpleDateFormat formatter = new SimpleDateFormat("yyyy.MM.dd-HH.mm.ss.SSS");
+										Resource create = ((ManageableContainer<?>) privateDirectory).create(deploymentId + "-" + formatter.format(deploymentInformation.getDeployed()) + ".xml", "application/xml");
+										OutputStream output = new BufferedOutputStream(IOUtils.toOutputStream(((WritableResource) create).getWritable()));
+										try {
+											deploymentInformation.marshal(output);
+										}
+										finally {
+											output.close();
+										}
+									}
 								}
 							}
+							catch (Exception e) {
+								logger.error("Could not perform deployment", e);
+							}
 						}
-					}
-					catch (Exception e) {
-						logger.error("Could not perform deployment", e);
-					}
+					}, true, "Deploy " + deploymentId);
 				}
 			}
 		});
@@ -450,107 +456,127 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		final Button prepare = new Button("Prepare");
 		final Button createDeployment = new Button("Create");
 		final Button cancelDeployment = new Button("Cancel");
-		prepare.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
+		prepare.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@SuppressWarnings({ "rawtypes", "unchecked" })
 			@Override
-			public void handle(MouseEvent arg0) {
-				try {
-					BuildInformation buildInformation = artifact.getConfiguration().getBuild().getBuildInformation(builds.getSelectionModel().getSelectedItem());
-					mergedRepository.set(artifact.getConfiguration().getBuild().getBuild(builds.getSelectionModel().getSelectedItem(), artifact.getConfiguration().getTarget().getClusterRepository(), true));
-					if (buildInformation.getArtifacts() != null) {
-						for (ArtifactMetaData artifactMeta : buildInformation.getArtifacts()) {
-							Entry sourceEntry = mergedRepository.get().getEntry(artifactMeta.getId());
-							if (sourceEntry instanceof ResourceEntry) {
-								ArtifactMerger merger = DeployContextMenu.getMerger(sourceEntry);
-								if (merger != null) {
-									Entry targetEntry = artifact.getConfiguration().getTarget().getClusterRepository().getEntry(artifactMeta.getId());
-									AnchorPane anchorPane = new AnchorPane();
-									Artifact mergedArtifact = sourceEntry.getNode().getArtifact();
-									if (merger.merge(mergedArtifact, targetEntry == null || !targetEntry.isNode() ? null : targetEntry.getNode().getArtifact(), anchorPane, mergedRepository.get())) {
-										if (added.getItems().contains(artifactMeta.getId()) || updated.getItems().contains(artifactMeta.getId())) {
-											pendingRequiredMerges.getItems().add(new PendingMerge((ResourceEntry) sourceEntry, mergedArtifact, anchorPane));
-										}
-										else {
-											pendingPossibleMerges.getItems().add(new PendingMerge((ResourceEntry) sourceEntry, mergedArtifact, anchorPane));
+			public void handle(ActionEvent arg0) {
+				MainController.getInstance().offload(new Runnable() {
+					public void run() {
+						try {
+							List<PendingMerge> tmpRequiredMerges = new ArrayList<PendingMerge>();
+							List<PendingMerge> tmpPossibleMerges = new ArrayList<PendingMerge>();
+							BuildInformation buildInformation = artifact.getConfiguration().getBuild().getBuildInformation(builds.getSelectionModel().getSelectedItem());
+							mergedRepository.set(artifact.getConfiguration().getBuild().getBuild(builds.getSelectionModel().getSelectedItem(), artifact.getConfiguration().getTarget().getClusterRepository(), true));
+							if (buildInformation.getArtifacts() != null) {
+								for (ArtifactMetaData artifactMeta : buildInformation.getArtifacts()) {
+									Entry sourceEntry = mergedRepository.get().getEntry(artifactMeta.getId());
+									if (sourceEntry instanceof ResourceEntry) {
+										ArtifactMerger merger = DeployContextMenu.getMerger(sourceEntry);
+										if (merger != null) {
+											Entry targetEntry = artifact.getConfiguration().getTarget().getClusterRepository().getEntry(artifactMeta.getId());
+											AnchorPane anchorPane = new AnchorPane();
+											Artifact mergedArtifact = sourceEntry.getNode().getArtifact();
+											if (merger.merge(mergedArtifact, targetEntry == null || !targetEntry.isNode() ? null : targetEntry.getNode().getArtifact(), anchorPane, mergedRepository.get())) {
+												if (added.getItems().contains(artifactMeta.getId()) || updated.getItems().contains(artifactMeta.getId())) {
+													tmpRequiredMerges.add(new PendingMerge((ResourceEntry) sourceEntry, mergedArtifact, anchorPane));
+												}
+												else {
+													tmpPossibleMerges.add(new PendingMerge((ResourceEntry) sourceEntry, mergedArtifact, anchorPane));
+												}
+											}
 										}
 									}
 								}
 							}
+							Platform.runLater(new Runnable() {
+								public void run() {
+									pendingRequiredMerges.getItems().addAll(tmpRequiredMerges);
+									pendingPossibleMerges.getItems().addAll(tmpPossibleMerges);
+									builds.setDisable(true);
+									refreshBuilds.setDisable(true);
+								}
+							});
+						}
+						catch (Exception e) {
+							logger.error("Could not create merged repository", e);
 						}
 					}
-					builds.setDisable(true);
-					refreshBuilds.setDisable(true);
-				}
-				catch (Exception e) {
-					logger.error("Could not create merged repository", e);
-				}
+				}, true, "Prepare build for artifact " + artifact.getId());
 			}
 		});
-		prepare.disableProperty().bind(builds.getSelectionModel().selectedItemProperty().isNull().or(createDeployment.disableProperty().not()));
+		prepare.disableProperty().bind(refreshBuilds.disabledProperty().or(builds.getSelectionModel().selectedItemProperty().isNull().or(createDeployment.disableProperty().not())));
 		createDeployment.disableProperty().bind(mergedRepository.isNull());
 		cancelDeployment.disableProperty().bind(mergedRepository.isNull());
-		createDeployment.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
+		createDeployment.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
-			public void handle(MouseEvent arg0) {
-				try {
-					DeploymentInformation information = new DeploymentInformation();
-					information.setTargetId(artifact.getConfiguration().getTarget().getId());
-					information.setDeploymentId(artifact.getId());
-					information.setBuild(buildInformation);
-					information.setAdded(new ArrayList<String>(added.getItems()));
-					information.setUnchanged(new ArrayList<String>(unchanged.getItems()));
-					information.setRemoved(new ArrayList<String>(removed.getItems()));
-					information.setMissing(new ArrayList<String>(missing.getItems()));
-					information.setUpdated(new ArrayList<String>(updated.getItems()));
-					information.setCreated(new Date());
-					List<String> merged = new ArrayList<String>();
-					for (PendingMerge merge : pendingPossibleMerges.getItems()) {
-						if (!merge.isSaved()) {
-							merge.save();
+			public void handle(ActionEvent arg0) {
+				MainController.getInstance().offload(new Runnable() {
+					public void run() {
+						try {
+							DeploymentInformation information = new DeploymentInformation();
+							information.setTargetId(artifact.getConfiguration().getTarget().getId());
+							information.setDeploymentId(artifact.getId());
+							information.setBuild(buildInformation);
+							information.setAdded(new ArrayList<String>(added.getItems()));
+							information.setUnchanged(new ArrayList<String>(unchanged.getItems()));
+							information.setRemoved(new ArrayList<String>(removed.getItems()));
+							information.setMissing(new ArrayList<String>(missing.getItems()));
+							information.setUpdated(new ArrayList<String>(updated.getItems()));
+							information.setCreated(new Date());
+							List<String> merged = new ArrayList<String>();
+							for (PendingMerge merge : pendingPossibleMerges.getItems()) {
+								if (!merge.isSaved()) {
+									merge.save();
+								}
+								merged.add(merge.getId());
+							}
+							for (PendingMerge merge : pendingRequiredMerges.getItems()) {
+								if (!merge.isSaved()) {
+									logger.warn("No merge performed for required merge: " + merge.getId());
+									merge.save();
+								}
+								merged.add(merge.getId());
+							}
+							information.setMerged(merged);
+							
+							ResourceContainer<?> container = ((ResourceEntry) entry).getContainer();
+							ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(container, EAIResourceRepository.PRIVATE);
+							String name = builds.getSelectionModel().getSelectedItem() + "-" + artifact.getConfiguration().getTarget().getId();
+							Resource create = ((ManageableContainer<?>) privateDirectory).create(name + ".zip", "application/zip");
+							ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(((WritableResource) create).getWritable()));
+							try {
+								ZipEntry zipEntry = new ZipEntry("deployment.xml");
+								zip.putNextEntry(zipEntry);
+								information.marshal(zip);
+								EAIRepositoryUtils.zip(zip, (ResourceEntry) mergedRepository.get().getRoot(), null);
+							}
+							finally {
+								zip.close();
+							}
+							if (!deploys.getItems().contains(name)) {
+								deploys.getItems().add(name);
+							}
+							mergedRepository.set(null);
+							Platform.runLater(new Runnable() {
+								public void run() {
+									builds.setDisable(false);
+									refreshBuilds.setDisable(false);
+									pendingPossibleMerges.getItems().clear();
+									pendingRequiredMerges.getItems().clear();
+									tabs.getTabs().clear();
+								}
+							});
 						}
-						merged.add(merge.getId());
-					}
-					for (PendingMerge merge : pendingRequiredMerges.getItems()) {
-						if (!merge.isSaved()) {
-							logger.warn("No merge performed for required merge: " + merge.getId());
-							merge.save();
+						catch (Exception e) {
+							logger.error("Could not create build", e);
 						}
-						merged.add(merge.getId());
 					}
-					information.setMerged(merged);
-					
-					ResourceContainer<?> container = ((ResourceEntry) entry).getContainer();
-					ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(container, EAIResourceRepository.PRIVATE);
-					String name = builds.getSelectionModel().getSelectedItem() + "-" + artifact.getConfiguration().getTarget().getId();
-					Resource create = ((ManageableContainer<?>) privateDirectory).create(name + ".zip", "application/zip");
-					ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(((WritableResource) create).getWritable()));
-					try {
-						ZipEntry zipEntry = new ZipEntry("deployment.xml");
-						zip.putNextEntry(zipEntry);
-						information.marshal(zip);
-						EAIRepositoryUtils.zip(zip, (ResourceEntry) mergedRepository.get().getRoot(), null);
-					}
-					finally {
-						zip.close();
-					}
-					if (!deploys.getItems().contains(name)) {
-						deploys.getItems().add(name);
-					}
-					mergedRepository.set(null);
-					builds.setDisable(false);
-					refreshBuilds.setDisable(false);
-					pendingPossibleMerges.getItems().clear();
-					pendingRequiredMerges.getItems().clear();
-					tabs.getTabs().clear();
-				}
-				catch (Exception e) {
-					logger.error("Could not create build", e);
-				}
+				}, true, "Create deployment for " + artifact.getId());
 			}
 		});
-		cancelDeployment.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
+		cancelDeployment.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
-			public void handle(MouseEvent arg0) {
+			public void handle(ActionEvent arg0) {
 				builds.setDisable(false);
 				refreshBuilds.setDisable(false);
 				mergedRepository.set(null);
@@ -566,6 +592,8 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		builds.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<String>() {
 			@Override
 			public void changed(ObservableValue<? extends String> arg0, String arg1, String arg2) {
+				builds.setDisable(true);
+				refreshBuilds.setDisable(true);
 				unchanged.getItems().clear();
 				updated.getItems().clear();
 				removed.getItems().clear();
@@ -574,59 +602,78 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 				pendingPossibleMerges.getItems().clear();
 				pendingRequiredMerges.getItems().clear();
 				mergedRepository.set(null);
-				
 				if (arg2 != null) {
-					try {
-						ResourceRepository target = artifact.getConfiguration().getTarget().getClusterRepository();
-						buildInformation = artifact.getConfiguration().getBuild().getBuildInformation(arg2);
-						List<String> artifactIds = new ArrayList<String>();
-						if (buildInformation != null) {
-							if (buildInformation.getArtifacts() != null) {
-								for (ArtifactMetaData artifactBuild : buildInformation.getArtifacts()) {
-									artifactIds.add(artifactBuild.getId());
-									Node node = target.getNode(artifactBuild.getId());
-									if (node == null) {
-										added.getItems().add(artifactBuild.getId());
-									}
-									else {
-										boolean isUnchanged = isSame(artifactBuild.getEnvironmentId(), node.getEnvironmentId());
-										isUnchanged &= isSame(artifactBuild.getLastModified(), node.getLastModified());
-										isUnchanged &= isSame(Long.valueOf(artifactBuild.getVersion()), Long.valueOf(node.getVersion()));
-										if (isUnchanged) {
-											unchanged.getItems().add(artifactBuild.getId());
-										}
-										else {
-											updated.getItems().add(artifactBuild.getId());
-										}
-									}
-								}
-							}
-							if (buildInformation.getFoldersToClean() != null) {
-								for (String folderToClean : buildInformation.getFoldersToClean()) {
-									Entry folder = target.getEntry(folderToClean);
-									if (folder != null) {
-										for (Entry entry : folder) {
-											// if the folder is set to be cleaned and it is not in the artifacts-to-be-deployed, it will be removed (ignore dynamics & folders)
-											if (entry.isNode() && !(entry instanceof DynamicEntry) && !artifactIds.contains(entry.getId())) {
-												removed.getItems().add(entry.getId());
+					MainController.getInstance().offload(new Runnable() {
+						public void run() {
+							try {
+								ResourceRepository target = artifact.getConfiguration().getTarget().getClusterRepository();
+								buildInformation = artifact.getConfiguration().getBuild().getBuildInformation(arg2);
+								List<String> artifactIds = new ArrayList<String>();
+								if (buildInformation != null) {
+									final List<String> tmpAdded = new ArrayList<String>();
+									final List<String> tmpUnchanged = new ArrayList<String>();
+									final List<String> tmpUpdated = new ArrayList<String>();
+									final List<String> tmpRemoved = new ArrayList<String>();
+									final List<String> tmpMissing = new ArrayList<String>();
+									if (buildInformation.getArtifacts() != null) {
+										for (ArtifactMetaData artifactBuild : buildInformation.getArtifacts()) {
+											artifactIds.add(artifactBuild.getId());
+											Node node = target.getNode(artifactBuild.getId());
+											if (node == null) {
+												tmpAdded.add(artifactBuild.getId());
+											}
+											else {
+												boolean isUnchanged = isSame(artifactBuild.getEnvironmentId(), node.getEnvironmentId());
+												isUnchanged &= isSame(artifactBuild.getLastModified(), node.getLastModified());
+												isUnchanged &= isSame(Long.valueOf(artifactBuild.getVersion()), Long.valueOf(node.getVersion()));
+												if (isUnchanged) {
+													tmpUnchanged.add(artifactBuild.getId());
+												}
+												else {
+													tmpUpdated.add(artifactBuild.getId());
+												}
 											}
 										}
 									}
-								}
-							}
-							if (buildInformation.getReferences() != null) {
-								for (ArtifactMetaData reference : buildInformation.getReferences()) {
-									Entry referenceEntry = target.getEntry(reference.getId());
-									if (referenceEntry == null || !referenceEntry.isNode()) {
-										missing.getItems().add(reference.getId());
+									if (buildInformation.getFoldersToClean() != null) {
+										for (String folderToClean : buildInformation.getFoldersToClean()) {
+											Entry folder = target.getEntry(folderToClean);
+											if (folder != null) {
+												for (Entry entry : folder) {
+													// if the folder is set to be cleaned and it is not in the artifacts-to-be-deployed, it will be removed (ignore dynamics & folders)
+													if (entry.isNode() && !(entry instanceof DynamicEntry) && !artifactIds.contains(entry.getId())) {
+														tmpRemoved.add(entry.getId());
+													}
+												}
+											}
+										}
 									}
+									if (buildInformation.getReferences() != null) {
+										for (ArtifactMetaData reference : buildInformation.getReferences()) {
+											Entry referenceEntry = target.getEntry(reference.getId());
+											if (referenceEntry == null || !referenceEntry.isNode()) {
+												tmpMissing.add(reference.getId());
+											}
+										}
+									}
+									Platform.runLater(new Runnable() {
+										public void run() {
+											added.getItems().addAll(tmpAdded);
+											unchanged.getItems().addAll(tmpUnchanged);
+											updated.getItems().addAll(tmpUpdated);
+											removed.getItems().addAll(tmpRemoved);
+											missing.getItems().addAll(tmpMissing);
+										}
+									});
 								}
 							}
+							catch (IOException e) {
+								logger.error("Could not open build: " + arg2, e);
+							}
+							refreshBuilds.setDisable(false);
+							builds.setDisable(false);
 						}
-					}
-					catch (IOException e) {
-						logger.error("Could not open build: " + arg2, e);
-					}
+					}, true, "Compare " + artifact.getId());
 				}
 			}
 		});
