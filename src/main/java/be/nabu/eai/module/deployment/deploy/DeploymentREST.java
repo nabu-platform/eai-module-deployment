@@ -117,7 +117,7 @@ public class DeploymentREST {
 			ResourceUtils.copy(directory, (ManageableContainer<?>) container, null, true, true);
 			server.releaseRepository(commonToReload.replace('.', '/'));
 		}
-		catch (IOException e) {
+		catch (Exception e) {
 			logger.error("Deployment failed", e);
 			if (server.isEnableSnapshots()) {
 				server.restoreRepository(commonToReload.replace('.', '/'));
