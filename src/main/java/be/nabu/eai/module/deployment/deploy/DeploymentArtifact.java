@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.List;
 
 import be.nabu.eai.module.cluster.RemoteRepository;
-import be.nabu.eai.module.deployment.deploy.DeploymentArtifactGUIManager.DeploymentInformation;
 import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceRepository;
@@ -26,7 +25,6 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 	public DeploymentArtifact(String id, ResourceContainer<?> directory, Repository repository) {
 		super(id, directory, repository, "deployment.xml", DeploymentConfiguration.class);
 	}
-
 
 	public List<String> getDeployments() {
 		List<String> deployments = new ArrayList<String>();
@@ -56,7 +54,7 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 		return deployments;
 	}
 	
-	public ResourceRepository getDeployment(String id, ResourceRepository parent, boolean allowChainedLookup) throws IOException {
+	public Resource getDeploymentArchive(String id) {
 		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
 		if (privateDirectory == null) {
 			return null;
@@ -65,9 +63,12 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 		if (!(child instanceof ReadableResource)) {
 			return null;
 		}
-		return getAsRepository(parent == null ? (ResourceRepository) getRepository() : parent, allowChainedLookup, child);
+		return child;
 	}
-
+	
+	public ResourceRepository getDeployment(String id, ResourceRepository parent, boolean allowChainedLookup) throws IOException {
+		return getAsRepository(parent == null ? (ResourceRepository) getRepository() : parent, allowChainedLookup, getDeploymentArchive(id));
+	}
 
 	public static ResourceRepository getAsRepository(ResourceRepository parent, boolean allowChainedLookup, Resource child) throws IOException {
 		ResourceContainer<?> root = new MemoryDirectory();

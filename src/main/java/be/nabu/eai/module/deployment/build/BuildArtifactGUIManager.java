@@ -1,8 +1,6 @@
 package be.nabu.eai.module.deployment.build;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.URI;
 import java.text.ParseException;
@@ -11,19 +9,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Marshaller;
-import javax.xml.bind.annotation.XmlAttribute;
-import javax.xml.bind.annotation.XmlRootElement;
-import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,14 +46,12 @@ import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIRepositoryUtils.EntryFilter;
 import be.nabu.eai.repository.EAIResourceRepository;
-import be.nabu.eai.repository.api.ArtifactManager;
 import be.nabu.eai.repository.api.DynamicEntry;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.api.ResourceRepository;
 import be.nabu.eai.repository.resources.RepositoryEntry;
-import be.nabu.eai.repository.util.ClassAdapter;
 import be.nabu.jfx.control.spinner.DoubleSpinner;
 import be.nabu.jfx.control.spinner.Spinner.Alignment;
 import be.nabu.jfx.control.tree.Marshallable;
@@ -619,159 +607,6 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 
 	public boolean isInitializing() {
 		return initializing;
-	}
-	
-	@SuppressWarnings("rawtypes")
-	public static class ArtifactMetaData {
-		private long version;
-		private String id, environmentId;
-		private Date lastModified;
-		private Class<? extends ArtifactManager> artifactManagerClass;
-		
-		public ArtifactMetaData() {
-			// auto construct
-		}
-		public ArtifactMetaData(String id, String environmentId, long version, Date lastModified, Class<? extends ArtifactManager> artifactManagerClass) {
-			this.id = id;
-			this.environmentId = environmentId;
-			this.version = version;
-			this.lastModified = lastModified;
-			this.artifactManagerClass = artifactManagerClass;
-		}
-		public String getId() {
-			return id;
-		}
-		public void setId(String id) {
-			this.id = id;
-		}
-		public long getVersion() {
-			return version;
-		}
-		public void setVersion(long version) {
-			this.version = version;
-		}
-		public String getEnvironmentId() {
-			return environmentId;
-		}
-		public void setEnvironmentId(String environmentId) {
-			this.environmentId = environmentId;
-		}
-		public Date getLastModified() {
-			return lastModified;
-		}
-		public void setLastModified(Date lastModified) {
-			this.lastModified = lastModified;
-		}
-		@XmlAttribute
-		@XmlJavaTypeAdapter(ClassAdapter.class)
-		public Class<? extends ArtifactManager> getArtifactManagerClass() {
-			return artifactManagerClass;
-		}
-		public void getArtifactManagerClass(Class<? extends ArtifactManager> artifactManagerClass) {
-			this.artifactManagerClass = artifactManagerClass;
-		}
-	}
-	
-	@XmlRootElement(name = "buildInformation")
-	public static class BuildInformation {
-		private Date created = new Date();
-		private int version, minorVersion;
-		private String buildId, clusterId;
-		private List<String> foldersToClean;
-		private List<ArtifactMetaData> artifacts, references;
-		private String environmentId;
-		
-		public BuildInformation() {
-			// auto construct
-		}
-		
-		public BuildInformation(int version, int minorVersion, String buildId, String clusterId, String environmentId) {
-			this.version = version;
-			this.minorVersion = minorVersion;
-			this.buildId = buildId;
-			this.clusterId = clusterId;
-			this.environmentId = environmentId;
-		}
-		@XmlAttribute
-		public Date getCreated() {
-			return created;
-		}
-		public void setCreated(Date created) {
-			this.created = created;
-		}
-		@XmlAttribute
-		public int getVersion() {
-			return version;
-		}
-		public void setVersion(int version) {
-			this.version = version;
-		}
-		@XmlAttribute
-		public int getMinorVersion() {
-			return minorVersion;
-		}
-		public void setMinorVersion(int minorVersion) {
-			this.minorVersion = minorVersion;
-		}
-		public List<String> getFoldersToClean() {
-			return foldersToClean;
-		}
-		public void setFoldersToClean(List<String> foldersToClean) {
-			this.foldersToClean = foldersToClean;
-		}
-		@XmlAttribute
-		public String getBuildId() {
-			return buildId;
-		}
-		public void setBuildId(String buildId) {
-			this.buildId = buildId;
-		}
-		@XmlAttribute
-		public String getClusterId() {
-			return clusterId;
-		}
-		public void setClusterId(String clusterId) {
-			this.clusterId = clusterId;
-		}
-		@XmlAttribute
-		public String getEnvironmentId() {
-			return environmentId;
-		}
-		public void setEnvironmentId(String environmentId) {
-			this.environmentId = environmentId;
-		}
-		public List<ArtifactMetaData> getReferences() {
-			return references;
-		}
-		public void setReferences(List<ArtifactMetaData> references) {
-			this.references = references;
-		}
-		public List<ArtifactMetaData> getArtifacts() {
-			return artifacts;
-		}
-		public void setArtifacts(List<ArtifactMetaData> artifacts) {
-			this.artifacts = artifacts;
-		}
-
-		public void marshal(OutputStream output) {
-			try {
-				Marshaller marshaller = JAXBContext.newInstance(BuildInformation.class).createMarshaller();
-				marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
-				marshaller.marshal(this, output);
-			}
-			catch(JAXBException e) {
-				throw new RuntimeException(e);
-			}
-		}
-		
-		public static BuildInformation unmarshal(InputStream input) {
-			try {
-				return (BuildInformation) JAXBContext.newInstance(BuildInformation.class).createUnmarshaller().unmarshal(input);
-			}
-			catch(JAXBException e) {
-				throw new RuntimeException(e);
-			}
-		}
 	}
 	
 	public static void sort(List<String> artifacts, Repository repository) {

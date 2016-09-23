@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.List;
 
 import be.nabu.eai.module.cluster.RemoteRepository;
-import be.nabu.eai.module.deployment.build.BuildArtifactGUIManager.BuildInformation;
 import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceRepository;

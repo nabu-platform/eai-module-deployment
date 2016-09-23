@@ -2,7 +2,6 @@ package be.nabu.eai.module.deployment.deploy;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -14,11 +13,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Marshaller;
-import javax.xml.bind.annotation.XmlRootElement;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,11 +45,13 @@ import be.nabu.eai.developer.api.ArtifactMerger;
 import be.nabu.eai.developer.managers.base.BaseArtifactGUIInstance;
 import be.nabu.eai.developer.managers.base.BaseGUIManager;
 import be.nabu.eai.developer.managers.util.SimpleProperty;
+import be.nabu.eai.developer.util.Confirm;
+import be.nabu.eai.developer.util.Confirm.ConfirmType;
 import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.module.cluster.menu.ClusterContextMenu;
+import be.nabu.eai.module.deployment.build.ArtifactMetaData;
 import be.nabu.eai.module.deployment.build.BuildArtifact;
-import be.nabu.eai.module.deployment.build.BuildArtifactGUIManager.ArtifactMetaData;
-import be.nabu.eai.module.deployment.build.BuildArtifactGUIManager.BuildInformation;
+import be.nabu.eai.module.deployment.build.BuildInformation;
 import be.nabu.eai.module.deployment.menu.DeployContextMenu;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIResourceRepository;
@@ -68,16 +64,27 @@ import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.api.ResourceRepository;
 import be.nabu.eai.repository.resources.RepositoryEntry;
+import be.nabu.eai.server.ServerConnection;
 import be.nabu.libs.artifacts.api.Artifact;
+import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.core.DefaultHTTPRequest;
 import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
 import be.nabu.libs.resources.ResourceUtils;
+import be.nabu.libs.resources.api.FiniteResource;
 import be.nabu.libs.resources.api.ManageableContainer;
+import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.resources.api.WritableResource;
 import be.nabu.libs.validator.api.Validation;
 import be.nabu.utils.io.IOUtils;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.mime.api.ContentPart;
+import be.nabu.utils.mime.api.ModifiablePart;
+import be.nabu.utils.mime.impl.MimeHeader;
+import be.nabu.utils.mime.impl.PlainMimeContentPart;
 
 public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtifact, BaseArtifactGUIInstance<DeploymentArtifact>> {
 
@@ -176,7 +183,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		information.setCreated(new Date());
 		cleanFolders(target, information);
 		deploy(DeploymentArtifact.getAsRepository(target, true, buildZip), target, information);
-		String commonToReload = getCommonToReload(information);
+		String commonToReload = DeploymentUtils.getCommonToReload(information);
 		if (commonToReload == null) {
 			target.reloadAll();
 		}
@@ -220,7 +227,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 	}
 	
 	private void reload(ClusterArtifact artifact, DeploymentInformation deploymentInformation) {
-		String commonToReload = getCommonToReload(deploymentInformation);
+		String commonToReload = DeploymentUtils.getCommonToReload(deploymentInformation);
 		if (commonToReload == null) {
 			artifact.reloadAll();
 		}
@@ -228,56 +235,6 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			artifact.reload(commonToReload);
 		}
 		artifact.reload();
-	}
-	
-	public static String getCommonToReload(DeploymentInformation deploymentInformation) {
-		List<String> foldersToReload = new ArrayList<String>();
-		for (DeploymentResult succeeded : deploymentInformation.getResults()) {
-			// only reload successful artifact deployments
-			if (succeeded.getError() == null && DeploymentResultType.ARTIFACT.equals(succeeded.getType())) {
-				String parent = succeeded.getId().contains(".") ? succeeded.getId().replaceAll("\\.[^.]+$", "") : null;
-				// if it lives on the root, reload it specifically
-				if (parent == null) {
-					foldersToReload.add(succeeded.getId());
-				}
-				else if (!foldersToReload.contains(parent)) {
-					foldersToReload.add(parent);
-				}
-			}
-		}
-		// it is hard to determine the correct order in which to load the deployed artifacts (there might be artifact repositories etc in there)
-		// so currently we just find the longest common parent and reload that entirely
-		String common = null;
-		boolean rootRefresh = false;
-		for (int i = foldersToReload.size() - 1; i >= 0; i--) {
-			if (common == null) {
-				common = foldersToReload.get(i);
-			}
-			else if (foldersToReload.get(i).equals(common) || foldersToReload.get(i).startsWith(common + ".")) {
-				continue;
-			}
-			else if (common.startsWith(foldersToReload.get(i))) {
-				common = foldersToReload.get(i);
-			}
-			// find common parent
-			else {
-				while (common.contains(".")) {
-					common = common.replaceAll("\\.[^.]+$", "");
-					if (foldersToReload.get(i).equals(common) || foldersToReload.get(i).startsWith(common + ".")) {
-						break;
-					}
-					// if we don't have any parents left and still no match, do a root refresh
-					else if (!common.contains(".")) {
-						rootRefresh = true;
-						break;
-					}
-				}
-			}
-			if (rootRefresh) {
-				break;
-			}
-		}
-		return rootRefresh ? null : common;
 	}
 	
 	private static void cleanFolders(ResourceRepository target, DeploymentInformation deploymentInformation) {
@@ -326,6 +283,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		final ComboBox<String> deploys = new ComboBox<String>();
 		deploys.getItems().addAll(artifact.getDeployments());
 		Button deploy = new Button("Deploy");
+		deploy.disableProperty().bind(deploys.getSelectionModel().selectedItemProperty().isNull());
 		deploy.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent arg0) {
@@ -368,7 +326,68 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 				}
 			}
 		});
-		deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy);
+		Button deployPush = new Button("Deploy (New)");
+		deployPush.disableProperty().bind(deploys.getSelectionModel().selectedItemProperty().isNull());
+		deployPush.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+			@Override
+			public void handle(ActionEvent arg0) {
+				String deploymentId = deploys.getSelectionModel().getSelectedItem();
+				MainController.getInstance().offload(new Runnable() {
+					public void run() {
+						try {
+							List<String> hosts = artifact.getConfiguration().getTarget().getConfig().getHosts();
+							Resource deploymentArchive = artifact.getDeploymentArchive(deploymentId);
+							for (String host : hosts) {
+								Date date = new Date();
+								ServerConnection connection = artifact.getConfiguration().getTarget().getConnection(host);
+								HTTPResponse execute = connection.getClient().execute(new DefaultHTTPRequest("POST", "/deploy", new PlainMimeContentPart(
+										null, 
+										((ReadableResource) deploymentArchive).getReadable(), 
+										new MimeHeader("Content-Length", "" + ((FiniteResource) deploymentArchive).getSize()),
+										new MimeHeader("Content-Type", "application/zip"),
+										new MimeHeader("Host", host)
+									)),
+									connection.getPrincipal(), 
+									connection.getContext() != null, 
+									false
+								);
+								logger.info("Deployment to '" + host + "' took: " + (new Date().getTime() - date.getTime()) + "ms");
+								if (execute.getCode() != 200) {
+									logger.error("An exception occurred while deploying to '" + host + "': " + execute.getCode());
+								}
+								ModifiablePart content = execute.getContent();
+								if (content instanceof ContentPart) {
+									ReadableContainer<ByteBuffer> readable = ((ContentPart) content).getReadable();
+									try {
+										DeploymentInformation unmarshalled = DeploymentInformation.unmarshal(IOUtils.toInputStream(readable));
+										StringBuilder builder = new StringBuilder();
+										if (unmarshalled.getResults() != null) {
+											for (DeploymentResult result : unmarshalled.getResults()) {
+												if (result.getError() != null) {
+													builder.append(result.getId()).append("\n").append(result.getError()).append("\n");
+												}
+											}
+										}
+										String string = builder.toString();
+										if (!string.isEmpty()) {
+											Confirm.confirm(ConfirmType.ERROR, "Errors during deployment", string, null);
+										}
+									}
+									finally {
+										readable.close();
+									}
+								}
+							}
+						}
+						catch (Exception e) {
+							logger.error("Could not perform deployment", e);
+						}
+					}
+				}, true, "Deploy " + deploymentId);
+			}
+		});
+		
+		deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy, deployPush);
 		
 		final ComboBox<String> builds = new ComboBox<String>();
 		builds.getItems().addAll(artifact.getConfiguration().getBuild().getBuilds());
@@ -784,146 +803,6 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			tab.setContent(arg2.getPane());
 			tabs.getTabs().add(tab);
 			tabs.getSelectionModel().select(tab);
-		}
-	}
-	
-	public static enum DeploymentResultType {
-		ARTIFACT,
-		FOLDER
-	}
-	
-	public static class DeploymentResult {
-		private Date started = new Date(), stopped;
-		private String id, error;
-		private DeploymentResultType type;
-		public Date getStarted() {
-			return started;
-		}
-		public void setStarted(Date started) {
-			this.started = started;
-		}
-		public Date getStopped() {
-			return stopped;
-		}
-		public void setStopped(Date stopped) {
-			this.stopped = stopped;
-		}
-		public String getId() {
-			return id;
-		}
-		public void setId(String id) {
-			this.id = id;
-		}
-		public String getError() {
-			return error;
-		}
-		public void setError(String error) {
-			this.error = error;
-		}
-		public DeploymentResultType getType() {
-			return type;
-		}
-		public void setType(DeploymentResultType type) {
-			this.type = type;
-		}
-	}
-	
-	@XmlRootElement(name = "deploymentInformation")
-	public static class DeploymentInformation {
-		private String targetId, deploymentId;
-		private BuildInformation build;
-		private Date created, deployed;
-		private List<String> merged, added, removed, updated, missing, unchanged;
-		private List<DeploymentResult> results;
-		public BuildInformation getBuild() {
-			return build;
-		}
-		public String getTargetId() {
-			return targetId;
-		}
-		public void setTargetId(String targetId) {
-			this.targetId = targetId;
-		}
-		public String getDeploymentId() {
-			return deploymentId;
-		}
-		public void setDeploymentId(String deploymentId) {
-			this.deploymentId = deploymentId;
-		}
-		public void setBuild(BuildInformation build) {
-			this.build = build;
-		}
-		public Date getCreated() {
-			return created;
-		}
-		public void setCreated(Date created) {
-			this.created = created;
-		}
-		public List<String> getMerged() {
-			return merged;
-		}
-		public void setMerged(List<String> merged) {
-			this.merged = merged;
-		}
-		public List<String> getAdded() {
-			return added;
-		}
-		public void setAdded(List<String> added) {
-			this.added = added;
-		}
-		public List<String> getRemoved() {
-			return removed;
-		}
-		public void setRemoved(List<String> removed) {
-			this.removed = removed;
-		}
-		public List<String> getUpdated() {
-			return updated;
-		}
-		public void setUpdated(List<String> updated) {
-			this.updated = updated;
-		}
-		public List<String> getMissing() {
-			return missing;
-		}
-		public void setMissing(List<String> missing) {
-			this.missing = missing;
-		}
-		public List<String> getUnchanged() {
-			return unchanged;
-		}
-		public void setUnchanged(List<String> unchanged) {
-			this.unchanged = unchanged;
-		}
-		public Date getDeployed() {
-			return deployed;
-		}
-		public void setDeployed(Date deployed) {
-			this.deployed = deployed;
-		}
-		public List<DeploymentResult> getResults() {
-			return results;
-		}
-		public void setResults(List<DeploymentResult> results) {
-			this.results = results;
-		}
-		public void marshal(OutputStream output) {
-			try {
-				Marshaller marshaller = JAXBContext.newInstance(DeploymentInformation.class).createMarshaller();
-				marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
-				marshaller.marshal(this, output);
-			}
-			catch(JAXBException e) {
-				throw new RuntimeException(e);
-			}
-		}
-		public static DeploymentInformation unmarshal(InputStream input) {
-			try {
-				return (DeploymentInformation) JAXBContext.newInstance(DeploymentInformation.class).createUnmarshaller().unmarshal(input);
-			}
-			catch(JAXBException e) {
-				throw new RuntimeException(e);
-			}
 		}
 	}
 	
