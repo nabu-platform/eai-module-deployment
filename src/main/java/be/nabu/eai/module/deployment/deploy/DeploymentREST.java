@@ -78,7 +78,7 @@ public class DeploymentREST {
 					if (target != null) {
 						List<String> filesToRemove = new ArrayList<String>();
 						for (Resource child : target) {
-							if (EAIResourceRepository.RESERVED.contains(child.getName())) {
+							if (child.getName().startsWith(".") || EAIResourceRepository.RESERVED.contains(child.getName())) {
 								filesToRemove.add(child.getName());
 							}
 							else if (!(child instanceof ResourceContainer)) {
