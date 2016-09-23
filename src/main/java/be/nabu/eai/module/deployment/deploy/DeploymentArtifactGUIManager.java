@@ -370,7 +370,11 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 										}
 										String string = builder.toString();
 										if (!string.isEmpty()) {
-											Confirm.confirm(ConfirmType.ERROR, "Errors during deployment", string, null);
+											Platform.runLater(new Runnable() {
+												public void run() {
+													Confirm.confirm(ConfirmType.ERROR, "Errors during deployment", string, null);
+												}
+											});
 										}
 									}
 									finally {
