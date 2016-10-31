@@ -282,7 +282,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		final HBox deployButtons = new HBox();
 		final ComboBox<String> deploys = new ComboBox<String>();
 		deploys.getItems().addAll(artifact.getDeployments());
-		Button deploy = new Button("Deploy");
+		Button deploy = new Button("Deploy (Push)");
 		deploy.disableProperty().bind(deploys.getSelectionModel().selectedItemProperty().isNull());
 		deploy.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
@@ -326,7 +326,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 				}
 			}
 		});
-		Button deployPush = new Button("Deploy (New)");
+		Button deployPush = new Button("Deploy (Drop)");
 		deployPush.disableProperty().bind(deploys.getSelectionModel().selectedItemProperty().isNull());
 		deployPush.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
 			@Override
@@ -391,7 +391,12 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			}
 		});
 		
-		deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy, deployPush);
+		if (artifact.getConfig().getTarget().isSimulation()) {
+			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy);
+		}
+		else {
+			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy, deployPush);
+		}
 		
 		final ComboBox<String> builds = new ComboBox<String>();
 		builds.getItems().addAll(artifact.getConfiguration().getBuild().getBuilds());
