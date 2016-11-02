@@ -5,8 +5,9 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
-import java.util.List;
 import java.util.zip.ZipInputStream;
 
 import javax.ws.rs.POST;
@@ -16,14 +17,12 @@ import javax.ws.rs.core.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.server.Server;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.resources.api.ManageableContainer;
 import be.nabu.libs.resources.api.ReadableResource;
-import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.resources.memory.MemoryDirectory;
 import be.nabu.libs.resources.memory.MemoryResource;
@@ -68,6 +67,12 @@ public class DeploymentREST {
 		deploymentInformation.setResults(new ArrayList<DeploymentResult>());
 		// delete any files as needed
 		if (deploymentInformation.getBuild().getFoldersToClean() != null) {
+			Collections.sort(deploymentInformation.getBuild().getFoldersToClean(), new Comparator<String>() {
+				@Override
+				public int compare(String o1, String o2) {
+					return o2.length() - o1.length();
+				}
+			});
 			for (String folderToClean : deploymentInformation.getBuild().getFoldersToClean()) {
 				logger.info("Cleaning " + folderToClean);
 				DeploymentResult result = new DeploymentResult();
@@ -75,22 +80,9 @@ public class DeploymentREST {
 					result.setType(DeploymentResultType.FOLDER);
 					result.setId(folderToClean);
 					ResourceContainer<?> target = (ResourceContainer<?>) ResourceUtils.resolve(container, folderToClean.replace('.', '/'));
-					if (target != null) {
-						List<String> filesToRemove = new ArrayList<String>();
-						for (Resource child : target) {
-							if (child.getName().startsWith(".") || EAIResourceRepository.RESERVED.contains(child.getName())) {
-								filesToRemove.add(child.getName());
-							}
-							else if (!(child instanceof ResourceContainer)) {
-								filesToRemove.add(child.getName());
-							}
-						}
-						for (String name : filesToRemove) {
-							((ManageableContainer<?>) target).delete(name);
-						}
-						if (!target.iterator().hasNext() && target.getParent() != null) {
-							((ManageableContainer<?>) target.getParent()).delete(target.getName());
-						}
+					// folders to clean are never at the artifact level, but at the actual folder level
+					if (target != null && target.getParent() != null) {
+						((ManageableContainer<?>) target.getParent()).delete(target.getName());
 					}
 					else {
 						logger.error("Could not find resources for: " + folderToClean);
