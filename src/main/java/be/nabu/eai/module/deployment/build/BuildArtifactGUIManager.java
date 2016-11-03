@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -402,6 +403,29 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 								}
 								else if (!arg2 && artifact.getConfiguration().getFoldersToClean().contains(itemProperty.get().getId())) {
 									artifact.getConfiguration().getFoldersToClean().remove(itemProperty.get().getId());
+									MainController.getInstance().setChanged();
+								}
+							}
+							
+							// remove folders that no longer exist
+							List<String> foldersToClean = artifact.getConfig().getFoldersToClean();
+							Iterator<String> iterator = foldersToClean.iterator();
+							while (iterator.hasNext()) {
+								String folderToClean = iterator.next();
+								Resource resolve = ResourceUtils.resolve(((ResourceEntry) entry.getRepository().getRoot()).getContainer(), folderToClean.replace('.', '/'));
+								if (resolve == null) {
+									iterator.remove();
+									MainController.getInstance().setChanged();
+								}
+							}
+							// remove artifacts that no longer exist
+							List<String> artifactsToBuild = artifact.getConfig().getArtifacts();
+							iterator = artifactsToBuild.iterator();
+							while (iterator.hasNext()) {
+								String artifactToBuild = iterator.next();
+								Resource resolve = ResourceUtils.resolve(((ResourceEntry) entry.getRepository().getRoot()).getContainer(), artifactToBuild.replace('.', '/'));
+								if (resolve == null) {
+									iterator.remove();
 									MainController.getInstance().setChanged();
 								}
 							}
