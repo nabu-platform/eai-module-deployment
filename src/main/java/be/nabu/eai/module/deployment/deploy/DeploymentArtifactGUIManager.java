@@ -37,7 +37,7 @@ import javafx.scene.control.TitledPane;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Region;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.ArtifactDiffer;
@@ -270,10 +270,6 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		AnchorPane.setTopAnchor(scroll, 0d);
 		AnchorPane.setLeftAnchor(scroll, 0d);
 		AnchorPane.setRightAnchor(scroll, 0d);
-		AnchorPane scrollRoot = new AnchorPane();
-		scrollRoot.setPrefSize(Region.USE_COMPUTED_SIZE, Region.USE_COMPUTED_SIZE);
-		scroll.setContent(scrollRoot);
-		scrollRoot.prefWidthProperty().bind(scroll.widthProperty());
 		
 		final DeploymentArtifact artifact = (DeploymentArtifact) entry.getNode().getArtifact();
 		
@@ -759,9 +755,17 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		
 		accordion.getPanes().addAll(unchangedPane, removedPane, addedPane, updatedPane, missingPane, pendingRequiredPane, pendingPossiblePane);
 		vbox.getChildren().addAll(deployButtons, buildBox, accordion, tabs);
-		AnchorPane.setLeftAnchor(vbox, 0d);
-		AnchorPane.setRightAnchor(vbox, 0d);
-		scrollRoot.getChildren().add(vbox);
+		VBox.setVgrow(tabs, Priority.ALWAYS);
+		
+		scroll.setContent(vbox);
+		
+		vbox.prefWidthProperty().bind(scroll.widthProperty());
+		vbox.prefHeightProperty().bind(scroll.heightProperty());
+		
+		AnchorPane.setLeftAnchor(scroll, 0d);
+		AnchorPane.setRightAnchor(scroll, 0d);
+		AnchorPane.setBottomAnchor(scroll, 0d);
+		AnchorPane.setTopAnchor(scroll, 0d);
 		pane.getChildren().add(scroll);
 		return artifact;
 	}
@@ -810,6 +814,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			Tab tab = new Tab(arg2.getId());
 			tab.setId(arg2.getId());
 			tab.setContent(arg2.getPane());
+			arg2.getPane().prefHeightProperty().bind(tabs.heightProperty().subtract(50d));
 			tabs.getTabs().add(tab);
 			tabs.getSelectionModel().select(tab);
 		}

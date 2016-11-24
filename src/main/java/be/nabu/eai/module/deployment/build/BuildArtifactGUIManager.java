@@ -261,7 +261,8 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 						for (String artifactId : instance.getConfiguration().getArtifacts()) {
 							be.nabu.eai.repository.api.Node node = source.getNode(artifactId);
 							if (node == null) {
-								throw new IllegalStateException("Can not find node: " + artifactId);
+								MainController.getInstance().notify(new ValidationMessage(Severity.ERROR, "Can not find node: " + artifactId));
+								continue;
 							}
 							artifacts.add(new ArtifactMetaData(artifactId, node.getEnvironmentId(), node.getVersion(), node.getLastModified(), node.getArtifactManager()));
 						}
