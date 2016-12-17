@@ -46,7 +46,6 @@ import be.nabu.eai.developer.managers.util.SimpleProperty;
 import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIRepositoryUtils.EntryFilter;
-import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.DynamicEntry;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.Repository;
@@ -89,7 +88,7 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 	
 	@Override
 	protected List<Property<?>> getCreateProperties() {
-		return Arrays.asList(new SimpleProperty<ClusterArtifact>("Source", ClusterArtifact.class, false));
+		return Arrays.asList(new SimpleProperty<ClusterArtifact>("Source", ClusterArtifact.class, false), new SimpleProperty<URI>("Build Location URI", URI.class, false));
 	}
 
 	@Override
@@ -104,16 +103,17 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 
 	@Override
 	protected BuildArtifact newInstance(MainController controller, RepositoryEntry entry, Value<?>...values) throws IOException {
-		ClusterArtifact source = null;
+		BuildArtifact buildArtifact = new BuildArtifact(entry.getId(), entry.getContainer(), entry.getRepository());
 		if (values != null) {
 			for (Value<?> value : values) {
 				if ("Source".equals(value.getProperty().getName())) {
-					source = (ClusterArtifact) value.getValue();
+					buildArtifact.getConfiguration().setSource((ClusterArtifact) value.getValue());
+				}
+				else if ("Build Location URI".equals(value.getProperty().getName())) {
+					buildArtifact.getConfiguration().setUri((URI) value.getValue());
 				}
 			}
 		}
-		BuildArtifact buildArtifact = new BuildArtifact(entry.getId(), entry.getContainer(), entry.getRepository());
-		buildArtifact.getConfiguration().setSource(source);
 		buildArtifact.save(entry.getContainer());
 		return buildArtifact;
 	}
@@ -218,14 +218,13 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		
 		version.getChildren().addAll(new Label("Version: "), versionSpinner, minorVersionSpinner);
 		
-		if (entry instanceof ResourceEntry) {
+		final ResourceContainer<?> targetContainer = instance.getBuildContainer();
+		if (targetContainer != null) {
 			Button build = new Button("Build");
 			build.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
 				@Override
 				public void handle(MouseEvent arg0) {
 					try {
-						ResourceContainer<?> container = ((ResourceEntry) entry).getContainer();
-						ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(container, EAIResourceRepository.PRIVATE);
 						SimpleDateFormat formatter = new SimpleDateFormat("yyyy.MM.dd-HH.mm.ss.SSS");
 						Integer version = instance.getConfiguration().getVersion() == null ? 1 : instance.getConfiguration().getVersion();
 						Integer minorVersion = instance.getConfiguration().getMinorVersion() == null ? 1 : instance.getConfiguration().getMinorVersion();
@@ -278,7 +277,7 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 						finally {
 							zip.close();
 						}
-						Resource create = ((ManageableContainer<?>) privateDirectory).create(version + "." + minorVersion + "-" + formatter.format(information.getCreated()) + ".zip", "application/zip");
+						Resource create = ((ManageableContainer<?>) targetContainer).create(version + "." + minorVersion + "-" + formatter.format(information.getCreated()) + ".zip", "application/zip");
 						WritableContainer<ByteBuffer> output = ((WritableResource) create).getWritable();
 						try {
 							output.write(buffer);
@@ -300,14 +299,14 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		delete.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
 			@Override
 			public void handle(MouseEvent arg0) {
-				ResourceContainer<?> privateDirectory = (ResourceContainer<?>) ((ResourceEntry) entry).getContainer().getChild(EAIResourceRepository.PRIVATE);
-				if (privateDirectory != null) {
+				ResourceContainer<?> buildContainer = instance.getBuildContainer();
+				if (buildContainer != null) {
 					builds.disableProperty().set(true);
 					List<String> selectedItems = new ArrayList<String>(builds.getSelectionModel().getSelectedItems());
 					for (String name : selectedItems) {
-						if (privateDirectory.getChild(name + ".zip") != null) {
+						if (buildContainer.getChild(name + ".zip") != null) {
 							try {
-								((ManageableContainer<?>) privateDirectory).delete(name + ".zip");
+								((ManageableContainer<?>) buildContainer).delete(name + ".zip");
 								builds.getItems().remove(name);
 							}
 							catch (IOException e) {

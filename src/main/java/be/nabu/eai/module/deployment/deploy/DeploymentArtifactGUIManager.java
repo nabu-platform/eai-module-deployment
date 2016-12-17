@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.URI;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -54,7 +55,6 @@ import be.nabu.eai.module.deployment.build.BuildArtifact;
 import be.nabu.eai.module.deployment.build.BuildInformation;
 import be.nabu.eai.module.deployment.menu.DeployContextMenu;
 import be.nabu.eai.repository.EAIRepositoryUtils;
-import be.nabu.eai.repository.EAIResourceRepository;
 import be.nabu.eai.repository.api.DynamicEntry;
 import be.nabu.eai.repository.api.Entry;
 import be.nabu.eai.repository.api.ExtensibleEntry;
@@ -70,7 +70,6 @@ import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.core.DefaultHTTPRequest;
 import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
-import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.resources.api.FiniteResource;
 import be.nabu.libs.resources.api.ManageableContainer;
 import be.nabu.libs.resources.api.ReadableResource;
@@ -107,7 +106,8 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 	protected List<Property<?>> getCreateProperties() {
 		return Arrays.asList(
 			new SimpleProperty<BuildArtifact>("Build", BuildArtifact.class, true),
-			new SimpleProperty<ClusterArtifact>("Target", ClusterArtifact.class, true)
+			new SimpleProperty<ClusterArtifact>("Target", ClusterArtifact.class, true),
+			new SimpleProperty<URI>("Deployment Location URI", URI.class, false)
 		);
 	}
 
@@ -139,28 +139,23 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 
 	@Override
 	protected DeploymentArtifact newInstance(MainController controller, RepositoryEntry entry, Value<?>...values) throws IOException {
-		ClusterArtifact target = null;
+		DeploymentArtifact artifact = new DeploymentArtifact(entry.getId(), entry.getContainer(), entry.getRepository());
 		if (values != null) {
 			for (Value<?> value : values) {
 				if ("Target".equals(value.getProperty().getName())) {
-					target = (ClusterArtifact) value.getValue();
+					artifact.getConfiguration().setTarget((ClusterArtifact) value.getValue());
+				}
+				else if ("Build".equals(value.getProperty().getName())) {
+					artifact.getConfiguration().setBuild((BuildArtifact) value.getValue());
+				}
+				else if ("Deployment Location URI".equals(value.getProperty().getName())) {
+					artifact.getConfiguration().setUri((URI) value.getValue());
 				}
 			}
 		}
-		BuildArtifact build = null;
-		if (values != null) {
-			for (Value<?> value : values) {
-				if ("Build".equals(value.getProperty().getName())) {
-					build = (BuildArtifact) value.getValue();
-				}
-			}
-		}
-		if (target == null || build == null) {
+		if (artifact.getConfiguration().getTarget() == null || artifact.getConfiguration().getBuild() == null) {
 			throw new IllegalArgumentException("Need to specify a target cluster and a build");
 		}
-		DeploymentArtifact artifact = new DeploymentArtifact(entry.getId(), entry.getContainer(), entry.getRepository());
-		artifact.getConfiguration().setBuild(build);
-		artifact.getConfiguration().setTarget(target);
 		artifact.save(entry.getContainer());
 		return artifact;
 	}
@@ -301,9 +296,9 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 										logger.info("Reloading remote servers...");
 										reload(artifact.getConfiguration().getTarget(), deploymentInformation);
 										deploymentInformation.setDeployed(new Date());
-										ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(artifact.getDirectory(), EAIResourceRepository.PRIVATE);
+										ResourceContainer<?> deploymentContainer = artifact.getDeploymentContainer();
 										SimpleDateFormat formatter = new SimpleDateFormat("yyyy.MM.dd-HH.mm.ss.SSS");
-										Resource create = ((ManageableContainer<?>) privateDirectory).create(deploymentId + "-" + formatter.format(deploymentInformation.getDeployed()) + ".xml", "application/xml");
+										Resource create = ((ManageableContainer<?>) deploymentContainer).create(deploymentId + "-" + formatter.format(deploymentInformation.getDeployed()) + ".xml", "application/xml");
 										OutputStream output = new BufferedOutputStream(IOUtils.toOutputStream(((WritableResource) create).getWritable()));
 										try {
 											deploymentInformation.marshal(output);
@@ -563,10 +558,9 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 							}
 							information.setMerged(merged);
 							
-							ResourceContainer<?> container = ((ResourceEntry) entry).getContainer();
-							ResourceContainer<?> privateDirectory = ResourceUtils.mkdirs(container, EAIResourceRepository.PRIVATE);
+							ResourceContainer<?> deploymentContainer = artifact.getDeploymentContainer();
 							String name = builds.getSelectionModel().getSelectedItem() + "-" + artifact.getConfiguration().getTarget().getId();
-							Resource create = ((ManageableContainer<?>) privateDirectory).create(name + ".zip", "application/zip");
+							Resource create = ((ManageableContainer<?>) deploymentContainer).create(name + ".zip", "application/zip");
 							ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(((WritableResource) create).getWritable()));
 							try {
 								ZipEntry zipEntry = new ZipEntry("deployment.xml");

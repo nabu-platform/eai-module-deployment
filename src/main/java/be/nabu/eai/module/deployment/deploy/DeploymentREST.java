@@ -85,8 +85,7 @@ public class DeploymentREST {
 						((ManageableContainer<?>) target.getParent()).delete(target.getName());
 					}
 					else {
-						logger.error("Could not find resources for: " + folderToClean);
-						result.setError("Could not find resources for: " + folderToClean);
+						logger.warn("Could not find resources for: " + folderToClean);
 					}
 				}
 				catch (IOException e) {

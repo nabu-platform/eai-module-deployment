@@ -26,11 +26,25 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 		super(id, directory, repository, "deployment.xml", DeploymentConfiguration.class);
 	}
 
+	public ResourceContainer<?> getDeploymentContainer() {
+		try {
+			if (getConfig().getUri() != null) {
+				return ResourceUtils.mkdir(getConfig().getUri(), null);
+			}
+			else {
+				return ResourceUtils.mkdirs(getDirectory(), EAIResourceRepository.PRIVATE);
+			}
+		}
+		catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
 	public List<String> getDeployments() {
 		List<String> deployments = new ArrayList<String>();
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory != null) {
-			for (Resource child : privateDirectory) {
+		ResourceContainer<?> deploymentContainer = getDeploymentContainer();
+		if (deploymentContainer != null) {
+			for (Resource child : deploymentContainer) {
 				if (child.getName().endsWith(".zip")) {
 					deployments.add(child.getName().replace(".zip", ""));
 				}
@@ -42,9 +56,9 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 	
 	public List<String> getDeploymentResults() {
 		List<String> deployments = new ArrayList<String>();
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory != null) {
-			for (Resource child : privateDirectory) {
+		ResourceContainer<?> deploymentContainer = getDeploymentContainer();
+		if (deploymentContainer != null) {
+			for (Resource child : deploymentContainer) {
 				if (child.getName().endsWith(".xml")) {
 					deployments.add(child.getName().replace(".xml", ""));
 				}
@@ -55,11 +69,11 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 	}
 	
 	public Resource getDeploymentArchive(String id) {
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory == null) {
+		ResourceContainer<?> deploymentContainer = getDeploymentContainer();
+		if (deploymentContainer == null) {
 			return null;
 		}
-		Resource child = privateDirectory.getChild(id + ".zip");
+		Resource child = deploymentContainer.getChild(id + ".zip");
 		if (!(child instanceof ReadableResource)) {
 			return null;
 		}
@@ -80,11 +94,11 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 	}
 	
 	public DeploymentInformation getDeploymentInformation(String id) throws IOException {
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory == null) {
+		ResourceContainer<?> deploymentContainer = getDeploymentContainer();
+		if (deploymentContainer == null) {
 			return null;
 		}
-		Resource child = privateDirectory.getChild(id + ".zip");
+		Resource child = deploymentContainer.getChild(id + ".zip");
 		ZIPArchive archive = new ZIPArchive();
 		try {
 			archive.setSource(child);
@@ -106,11 +120,11 @@ public class DeploymentArtifact extends JAXBArtifact<DeploymentConfiguration> {
 	}
 	
 	public DeploymentInformation getDeploymentResult(String id) throws IOException {
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory == null) {
+		ResourceContainer<?> deploymentContainer = getDeploymentContainer();
+		if (deploymentContainer == null) {
 			return null;
 		}
-		Resource child = privateDirectory.getChild(id + ".xml");
+		Resource child = deploymentContainer.getChild(id + ".xml");
 		if (child instanceof ReadableResource) {
 			ReadableContainer<ByteBuffer> readable = ((ReadableResource) child).getReadable();
 			try {

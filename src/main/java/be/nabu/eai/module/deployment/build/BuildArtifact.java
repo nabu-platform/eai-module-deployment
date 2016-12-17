@@ -25,25 +25,39 @@ public class BuildArtifact extends JAXBArtifact<BuildConfiguration> {
 	public BuildArtifact(String id, ResourceContainer<?> directory, Repository repository) {
 		super(id, directory, repository, "build.xml", BuildConfiguration.class);
 	}
+	
+	public ResourceContainer<?> getBuildContainer() {
+		try {
+			if (getConfig().getUri() != null) {
+				return ResourceUtils.mkdir(getConfig().getUri(), null);
+			}
+			else {
+				return ResourceUtils.mkdirs(getDirectory(), EAIResourceRepository.PRIVATE);
+			}
+		}
+		catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
 
 	public List<String> getBuilds() {
 		List<String> builds = new ArrayList<String>();
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory != null) {
-			for (Resource child : privateDirectory) {
+		ResourceContainer<?> buildContainer = getBuildContainer();
+		if (buildContainer != null) {
+			for (Resource child : buildContainer) {
 				builds.add(child.getName().replace(".zip", ""));
 			}
-			Collections.sort(builds);
 		}
+		Collections.sort(builds);
 		return builds;
 	}
 	
 	public ResourceRepository getBuild(String id, ResourceRepository parent, boolean allowChainedLookup) throws IOException {
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory == null) {
+		ResourceContainer<?> buildContainer = getBuildContainer();
+		if (buildContainer == null) {
 			return null;
 		}
-		Resource child = privateDirectory.getChild(id + ".zip");
+		Resource child = buildContainer.getChild(id + ".zip");
 		if (!(child instanceof ReadableResource)) {
 			return null;
 		}
@@ -56,11 +70,11 @@ public class BuildArtifact extends JAXBArtifact<BuildConfiguration> {
 	}
 	
 	public BuildInformation getBuildInformation(String id) throws IOException {
-		ResourceContainer<?> privateDirectory = (ResourceContainer<?>) getDirectory().getChild(EAIResourceRepository.PRIVATE);
-		if (privateDirectory == null) {
+		ResourceContainer<?> buildContainer = getBuildContainer();
+		if (buildContainer == null) {
 			return null;
 		}
-		Resource child = privateDirectory.getChild(id + ".zip");
+		Resource child = buildContainer.getChild(id + ".zip");
 		return getBuildInformation(child);
 	}
 

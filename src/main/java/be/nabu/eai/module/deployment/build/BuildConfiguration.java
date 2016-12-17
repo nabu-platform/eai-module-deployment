@@ -1,5 +1,6 @@
 package be.nabu.eai.module.deployment.build;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,8 +12,12 @@ import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.repository.jaxb.ArtifactXMLAdapter;
 
 @XmlRootElement(name = "build")
-@XmlType(propOrder = {"source", "version", "minorVersion", "artifacts", "foldersToClean"})
+@XmlType(propOrder = {"source", "version", "uri", "minorVersion", "artifacts", "foldersToClean"})
 public class BuildConfiguration {
+	/**
+	 * Where to store the builds
+	 */
+	private URI uri;
 	/**
 	 * The source to build from
 	 */
@@ -72,5 +77,11 @@ public class BuildConfiguration {
 	}
 	public void setFoldersToClean(List<String> foldersToClean) {
 		this.foldersToClean = foldersToClean;
+	}
+	public URI getUri() {
+		return uri;
+	}
+	public void setUri(URI uri) {
+		this.uri = uri;
 	}
 }
