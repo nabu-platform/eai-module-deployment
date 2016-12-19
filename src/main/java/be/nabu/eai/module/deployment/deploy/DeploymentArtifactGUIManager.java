@@ -1,6 +1,8 @@
 package be.nabu.eai.module.deployment.deploy;
 
 import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
@@ -11,6 +13,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -46,7 +49,9 @@ import be.nabu.eai.developer.api.ArtifactMerger;
 import be.nabu.eai.developer.managers.base.BaseArtifactGUIInstance;
 import be.nabu.eai.developer.managers.base.BaseGUIManager;
 import be.nabu.eai.developer.managers.util.SimpleProperty;
+import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.Confirm;
+import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.developer.util.Confirm.ConfirmType;
 import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.module.cluster.menu.ClusterContextMenu;
@@ -382,11 +387,57 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			}
 		});
 		
+		Button downloadButton = new Button("Download");
+		downloadButton.disableProperty().bind(deploys.getSelectionModel().selectedItemProperty().isNull());
+		downloadButton.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+			@SuppressWarnings({ "unchecked", "rawtypes" })
+			@Override
+			public void handle(ActionEvent arg0) {
+				String deploymentId = deploys.getSelectionModel().getSelectedItem();
+				Resource deploymentArchive = artifact.getDeploymentArchive(deploymentId);
+				if (deploymentArchive != null) {
+					try {
+						ReadableContainer<ByteBuffer> readable = ((ReadableResource) deploymentArchive).getReadable();
+						byte [] content;
+						try {
+							content = IOUtils.toBytes(readable);
+						}
+						finally {
+							readable.close();
+						}
+						SimpleProperty<File> fileProperty = new SimpleProperty<File>("File", File.class, true);
+						SimplePropertyUpdater updater = new SimplePropertyUpdater(true, new LinkedHashSet(Arrays.asList(fileProperty)));
+						EAIDeveloperUtils.buildPopup(MainController.getInstance(), updater, "Download Deployment Archive", new EventHandler<ActionEvent>() {
+							@Override
+							public void handle(ActionEvent arg0) {
+								try {
+									File file = updater.getValue("File");
+									OutputStream output = new BufferedOutputStream(new FileOutputStream(file));
+									try {
+										output.write(content);
+									}
+									finally {
+										output.close();
+									}
+								}
+								catch (IOException e) {
+									MainController.getInstance().notify(e);
+								}
+							}
+						}, false);
+					}
+					catch (IOException e) {
+						MainController.getInstance().notify(e);
+					}
+				}
+			}
+		});
+		
 		if (artifact.getConfig().getTarget().isSimulation()) {
-			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy);
+			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy, downloadButton);
 		}
 		else {
-			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy, deployPush);
+			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy, deployPush, downloadButton);
 		}
 		
 		final ComboBox<String> builds = new ComboBox<String>();
@@ -560,7 +611,10 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 							
 							ResourceContainer<?> deploymentContainer = artifact.getDeploymentContainer();
 							String name = builds.getSelectionModel().getSelectedItem() + "-" + artifact.getConfiguration().getTarget().getId();
-							Resource create = ((ManageableContainer<?>) deploymentContainer).create(name + ".zip", "application/zip");
+							Resource create = deploymentContainer.getChild(name + ".zip");
+							if (create == null) {
+								create = ((ManageableContainer<?>) deploymentContainer).create(name + ".zip", "application/zip");
+							}
 							ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(((WritableResource) create).getWritable()));
 							try {
 								ZipEntry zipEntry = new ZipEntry("deployment.xml");

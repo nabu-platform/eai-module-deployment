@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -23,11 +24,15 @@ import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.resources.api.ManageableContainer;
 import be.nabu.libs.resources.api.ReadableResource;
+import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
+import be.nabu.libs.resources.api.WritableResource;
 import be.nabu.libs.resources.memory.MemoryDirectory;
 import be.nabu.libs.resources.memory.MemoryResource;
 import be.nabu.utils.aspects.AspectUtils;
 import be.nabu.utils.io.IOUtils;
+import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.WritableContainer;
 
 @Path("/")
 public class DeploymentREST {
@@ -36,6 +41,13 @@ public class DeploymentREST {
 	private Server server;
 	
 	private Logger logger = LoggerFactory.getLogger(getClass());
+	
+	public DeploymentREST() {
+		// auto
+	}
+	public DeploymentREST(Server server) {
+		this.server = server;
+	}
 	
 	@POST
 	@Path("/deploy")
@@ -48,6 +60,7 @@ public class DeploymentREST {
 		finally {
 			zip.close();
 		}
+		Date started = new Date();
 		MemoryResource deploymentXml = directory.getChild("deployment.xml");
 		if (deploymentXml == null) {
 			throw new HTTPException(400, "Not a valid deployment zip");
@@ -122,6 +135,19 @@ public class DeploymentREST {
 		result.setStopped(new Date());
 		server.getRepository().reload(commonToReload);
 		deploymentInformation.getResults().add(result);
+		
+		if (server.getDeployments() != null) {
+			SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS");
+			String fileName = formatter.format(started) + "-" + formatter.format(new Date()) + ".xml";
+			Resource create = ((ManageableContainer<?>) server.getDeployments()).create(fileName, "application/xml");
+			WritableContainer<ByteBuffer> writable = ((WritableResource) create).getWritable();
+			try {
+				deploymentInformation.marshal(IOUtils.toOutputStream(writable));
+			}
+			finally {
+				writable.close();
+			}
+		}
 		return deploymentInformation;
 	}
 }
