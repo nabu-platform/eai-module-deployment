@@ -238,28 +238,30 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 	}
 	
 	private static void cleanFolders(ResourceRepository target, DeploymentInformation deploymentInformation) {
-		for (String folderToClean : deploymentInformation.getBuild().getFoldersToClean()) {
-			DeploymentResult result = new DeploymentResult();
-			result.setType(DeploymentResultType.FOLDER);
-			result.setId(folderToClean);
-			Entry entry = target.getEntry(folderToClean);
-			if (entry != null && entry.getParent() instanceof ExtensibleEntry) {
-				try {
-					((ExtensibleEntry) entry.getParent()).deleteChild(entry.getName(), true);
+		if (deploymentInformation.getBuild().getFoldersToClean() != null && !deploymentInformation.getBuild().getFoldersToClean().isEmpty()) {
+			for (String folderToClean : deploymentInformation.getBuild().getFoldersToClean()) {
+				DeploymentResult result = new DeploymentResult();
+				result.setType(DeploymentResultType.FOLDER);
+				result.setId(folderToClean);
+				Entry entry = target.getEntry(folderToClean);
+				if (entry != null && entry.getParent() instanceof ExtensibleEntry) {
+					try {
+						((ExtensibleEntry) entry.getParent()).deleteChild(entry.getName(), true);
+					}
+					catch (IOException e) {
+						StringWriter writer = new StringWriter();
+						PrintWriter printer = new PrintWriter(writer);
+						e.printStackTrace(printer);
+						printer.flush();
+						result.setError(writer.toString());
+					}
 				}
-				catch (IOException e) {
-					StringWriter writer = new StringWriter();
-					PrintWriter printer = new PrintWriter(writer);
-					e.printStackTrace(printer);
-					printer.flush();
-					result.setError(writer.toString());
+				else {
+					result.setError("Could not find entry or its parent is not modifiable");
 				}
+				result.setStopped(new Date());
+				deploymentInformation.getResults().add(result);
 			}
-			else {
-				result.setError("Could not find entry or its parent is not modifiable");
-			}
-			result.setStopped(new Date());
-			deploymentInformation.getResults().add(result);
 		}
 	}
 	

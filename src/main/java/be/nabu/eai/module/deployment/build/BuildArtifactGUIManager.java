@@ -33,6 +33,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
@@ -325,7 +326,16 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		
 		VBox vbox = new VBox();
 		vbox.getChildren().addAll(sourceLabel, tree, version, builds, buildButtons);
-		pane.getChildren().add(vbox);
+		
+		ScrollPane scroll = new ScrollPane();
+		
+		AnchorPane.setBottomAnchor(scroll, 0d);
+		AnchorPane.setTopAnchor(scroll, 0d);
+		AnchorPane.setLeftAnchor(scroll, 0d);
+		AnchorPane.setRightAnchor(scroll, 0d);
+		
+		scroll.setContent(vbox);
+		pane.getChildren().add(scroll);
 		
 		return instance;
 	}
