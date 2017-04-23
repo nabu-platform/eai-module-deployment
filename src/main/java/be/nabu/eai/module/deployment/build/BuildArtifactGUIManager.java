@@ -183,8 +183,8 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		HBox version = new HBox();
 		DoubleSpinner versionSpinner = new DoubleSpinner(Alignment.LEFT);
 		versionSpinner.setPrefHeight(20);
-		versionSpinner.setMin(1d);
-		versionSpinner.valueProperty().set(instance.getConfiguration().getVersion() == null ? 1d : (double) (int) instance.getConfiguration().getVersion());
+		versionSpinner.setMin(0d);
+		versionSpinner.valueProperty().set(instance.getConfiguration().getVersion() == null ? 0d : (double) (int) instance.getConfiguration().getVersion());
 		versionSpinner.valueProperty().addListener(new ChangeListener<Double>() {
 			@Override
 			public void changed(ObservableValue<? extends Double> arg0, Double arg1, Double arg2) {
@@ -199,8 +199,8 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		});
 		DoubleSpinner minorVersionSpinner = new DoubleSpinner(Alignment.RIGHT);
 		minorVersionSpinner.setPrefHeight(20);
-		minorVersionSpinner.setMin(1d);
-		minorVersionSpinner.valueProperty().set(instance.getConfiguration().getMinorVersion() == null ? 1d : (double) (int) instance.getConfiguration().getMinorVersion());
+		minorVersionSpinner.setMin(0d);
+		minorVersionSpinner.valueProperty().set(instance.getConfiguration().getMinorVersion() == null ? 0d : (double) (int) instance.getConfiguration().getMinorVersion());
 		minorVersionSpinner.valueProperty().addListener(new ChangeListener<Double>() {
 			@Override
 			public void changed(ObservableValue<? extends Double> arg0, Double arg1, Double arg2) {
