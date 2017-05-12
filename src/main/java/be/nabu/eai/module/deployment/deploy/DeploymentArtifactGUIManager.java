@@ -318,6 +318,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 							}
 							catch (Exception e) {
 								logger.error("Could not perform deployment", e);
+								throw new RuntimeException(e);
 							}
 						}
 					}, true, "Deploy " + deploymentId);
@@ -383,6 +384,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 						}
 						catch (Exception e) {
 							logger.error("Could not perform deployment", e);
+							throw new RuntimeException(e);
 						}
 					}
 				}, true, "Deploy " + deploymentId);
@@ -571,6 +573,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 						}
 						catch (Exception e) {
 							logger.error("Could not create merged repository", e);
+							throw new RuntimeException(e);
 						}
 					}
 				}, true, "Prepare build for artifact " + artifact.getId());
@@ -643,6 +646,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 						}
 						catch (Exception e) {
 							logger.error("Could not create build", e);
+							throw new RuntimeException(e);
 						}
 					}
 				}, true, "Create deployment for " + artifact.getId());
