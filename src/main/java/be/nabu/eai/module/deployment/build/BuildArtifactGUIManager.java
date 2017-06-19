@@ -227,8 +227,8 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 				public void handle(MouseEvent arg0) {
 					try {
 						SimpleDateFormat formatter = new SimpleDateFormat("yyyy.MM.dd-HH.mm.ss.SSS");
-						Integer version = instance.getConfiguration().getVersion() == null ? 1 : instance.getConfiguration().getVersion();
-						Integer minorVersion = instance.getConfiguration().getMinorVersion() == null ? 1 : instance.getConfiguration().getMinorVersion();
+						Integer version = instance.getConfiguration().getVersion() == null ? 0 : instance.getConfiguration().getVersion();
+						Integer minorVersion = instance.getConfiguration().getMinorVersion() == null ? 0 : instance.getConfiguration().getMinorVersion();
 						BuildInformation information = new BuildInformation(version, minorVersion, instance.getId(), instance.getConfiguration().getSource() == null ? null : instance.getConfiguration().getSource().getId(), InetAddress.getLocalHost().getHostName());
 						Set<String> referenceIds = new HashSet<String>();
 						List<ArtifactMetaData> references = new ArrayList<ArtifactMetaData>();
