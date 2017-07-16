@@ -71,7 +71,7 @@ public class DeploymentREST {
 		
 		ResourceContainer<?> container = ((ResourceEntry) server.getRepository().getRoot()).getContainer();
 		if (server.isEnableSnapshots()) {
-			server.snapshotRepository(commonToReload.replace('.', '/'));
+			server.snapshotRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
 			// get the non-managed container
 			container = (ResourceContainer<?>) AspectUtils.aspects(container).get(0);
 		}
@@ -119,12 +119,12 @@ public class DeploymentREST {
 		result.setId(commonToReload);
 		try {
 			ResourceUtils.copy(directory, (ManageableContainer<?>) container, null, true, true);
-			server.releaseRepository(commonToReload.replace('.', '/'));
+			server.releaseRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
 		}
 		catch (Exception e) {
 			logger.error("Deployment failed", e);
 			if (server.isEnableSnapshots()) {
-				server.restoreRepository(commonToReload.replace('.', '/'));
+				server.restoreRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
 			}
 			StringWriter writer = new StringWriter();
 			PrintWriter printer = new PrintWriter(writer);
@@ -133,7 +133,12 @@ public class DeploymentREST {
 			result.setError(writer.toString());
 		}
 		result.setStopped(new Date());
-		server.getRepository().reload(commonToReload);
+		if (commonToReload == null) {
+			server.getRepository().reloadAll();
+		}
+		else {
+			server.getRepository().reload(commonToReload);
+		}
 		deploymentInformation.getResults().add(result);
 		
 		if (server.getDeployments() != null) {

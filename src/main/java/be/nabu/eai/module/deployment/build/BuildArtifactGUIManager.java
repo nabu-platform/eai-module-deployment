@@ -149,24 +149,31 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		if (instance.getConfiguration().getArtifacts() != null) {
 			List<String> ids = new ArrayList<String>(instance.getConfiguration().getArtifacts());
 			for (String selected : ids) {
-				TreeItem<Entry> resolve = tree.resolve(selected.replace(".", "/"), false);
-				if (resolve == null) {
+				try {
+					TreeItem<Entry> resolve = tree.resolve(selected.replace(".", "/"), false);
+					if (resolve == null) {
+						instance.getConfiguration().getArtifacts().remove(selected);
+						MainController.getInstance().setChanged();
+						MainController.getInstance().notify(new ValidationMessage(Severity.WARNING, "Can not select: " + selected));
+					}
+					else {
+						((DeploymentTreeItem) resolve).check.setSelected(true);
+						// if the parent item is also selected (due to auto-calculation) and it is _not_ in the "folders to be deleted" list, it has to be set to indeterminate
+						DeploymentTreeItem parent = ((DeploymentTreeItem) resolve).getParent();
+						while (parent != null) {
+							if (parent.check.isSelected()) {
+								if (!instance.getConfiguration().getFoldersToClean().contains(parent.itemProperty().get().getId())) {
+									parent.check.setIndeterminate(true);
+								}
+							}
+							parent = parent.getParent();
+						}
+					}
+				}
+				catch (Exception e) {
 					instance.getConfiguration().getArtifacts().remove(selected);
 					MainController.getInstance().setChanged();
 					MainController.getInstance().notify(new ValidationMessage(Severity.WARNING, "Can not select: " + selected));
-				}
-				else {
-					((DeploymentTreeItem) resolve).check.setSelected(true);
-					// if the parent item is also selected (due to auto-calculation) and it is _not_ in the "folders to be deleted" list, it has to be set to indeterminate
-					DeploymentTreeItem parent = ((DeploymentTreeItem) resolve).getParent();
-					while (parent != null) {
-						if (parent.check.isSelected()) {
-							if (!instance.getConfiguration().getFoldersToClean().contains(parent.itemProperty().get().getId())) {
-								parent.check.setIndeterminate(true);
-							}
-						}
-						parent = parent.getParent();
-					}
 				}
 			}
 		}
