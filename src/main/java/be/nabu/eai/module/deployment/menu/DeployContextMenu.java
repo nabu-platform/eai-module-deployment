@@ -1,8 +1,11 @@
 package be.nabu.eai.module.deployment.menu;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import javafx.event.ActionEvent;
@@ -23,9 +26,13 @@ import be.nabu.eai.developer.api.ArtifactMerger;
 import be.nabu.eai.developer.api.EntryContextMenuProvider;
 import be.nabu.eai.developer.managers.base.BasePropertyOnlyGUIManager;
 import be.nabu.eai.developer.managers.base.JAXBArtifactMerger;
+import be.nabu.eai.developer.managers.util.SimpleProperty;
+import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.Confirm;
 import be.nabu.eai.developer.util.Confirm.ConfirmType;
+import be.nabu.eai.developer.util.EAIDeveloperUtils;
 import be.nabu.eai.module.cluster.ClusterArtifact;
+import be.nabu.eai.module.deployment.deploy.DeploymentArtifactGUIManager;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.api.ArtifactManager;
 import be.nabu.eai.repository.api.Entry;
@@ -39,6 +46,7 @@ import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.resources.api.ManageableContainer;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
+import be.nabu.libs.resources.file.FileItem;
 import be.nabu.libs.validator.api.Validation;
 
 public class DeployContextMenu implements EntryContextMenuProvider {
@@ -49,6 +57,7 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 	public MenuItem getContext(Entry entry) {
 		if (entry instanceof ResourceEntry && entry.isNode()) {
 			Menu menu = new Menu("Deploy");
+			Menu target = new Menu("Target");
 			for (final ClusterArtifact cluster : entry.getRepository().getArtifacts(ClusterArtifact.class)) {
 				MenuItem item = new MenuItem(cluster.getId());
 				item.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
@@ -124,7 +133,43 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 						}
 					}
 				});
-				menu.getItems().add(item);
+				target.getItems().add(item);
+			}
+			if (!target.getItems().isEmpty()) {
+				menu.getItems().add(target);
+			}
+			if (entry.isNode() && ClusterArtifact.class.isAssignableFrom(entry.getNode().getArtifactClass())) {
+				MenuItem fileUpload = new MenuItem("Deploy File");
+				fileUpload.addEventHandler(ActionEvent.ANY, new EventHandler<ActionEvent>() {
+					@SuppressWarnings({ "unchecked", "rawtypes" })
+					@Override
+					public void handle(ActionEvent arg0) {
+						try {
+							ClusterArtifact cluster = (ClusterArtifact) entry.getNode().getArtifact();
+							SimpleProperty<File> fileProperty = new SimpleProperty<File>("File", File.class, true);
+							fileProperty.setInput(true);
+							SimplePropertyUpdater updater = new SimplePropertyUpdater(true, new LinkedHashSet(Arrays.asList(fileProperty)));
+							EAIDeveloperUtils.buildPopup(MainController.getInstance(), updater, "Select deployment archive", new EventHandler<ActionEvent>() {
+								@Override
+								public void handle(ActionEvent arg0) {
+									try {
+										File file = updater.getValue("File");
+										if (file != null) {
+											DeploymentArtifactGUIManager.deployArchive(cluster, new FileItem(null, file, false));
+										}
+									}
+									catch (Exception e) {
+										MainController.getInstance().notify(e);
+									}
+								}
+							}, false);
+						}
+						catch (Exception e) {
+							MainController.getInstance().notify(e);
+						}
+					}
+				});
+				menu.getItems().add(fileUpload);
 			}
 			if (!menu.getItems().isEmpty()) {
 				return menu;

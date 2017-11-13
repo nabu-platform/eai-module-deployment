@@ -87,6 +87,7 @@ import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.mime.api.ContentPart;
 import be.nabu.utils.mime.api.ModifiablePart;
+import be.nabu.utils.mime.impl.FormatException;
 import be.nabu.utils.mime.impl.MimeHeader;
 import be.nabu.utils.mime.impl.PlainMimeContentPart;
 
@@ -334,59 +335,15 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 				MainController.getInstance().offload(new Runnable() {
 					public void run() {
 						try {
-							List<String> hosts = artifact.getConfiguration().getTarget().getConfig().getHosts();
 							Resource deploymentArchive = artifact.getDeploymentArchive(deploymentId);
-							for (String host : hosts) {
-								Date date = new Date();
-								ServerConnection connection = artifact.getConfiguration().getTarget().getConnection(host);
-								HTTPResponse execute = connection.getClient().execute(new DefaultHTTPRequest("POST", "/deploy", new PlainMimeContentPart(
-										null, 
-										((ReadableResource) deploymentArchive).getReadable(), 
-										new MimeHeader("Content-Length", "" + ((FiniteResource) deploymentArchive).getSize()),
-										new MimeHeader("Content-Type", "application/zip"),
-										new MimeHeader("Host", host)
-									)),
-									connection.getPrincipal(), 
-									connection.getContext() != null, 
-									false
-								);
-								logger.info("Deployment to '" + host + "' took: " + (new Date().getTime() - date.getTime()) + "ms");
-								if (execute.getCode() != 200) {
-									logger.error("An exception occurred while deploying to '" + host + "': " + execute.getCode());
-								}
-								ModifiablePart content = execute.getContent();
-								if (content instanceof ContentPart) {
-									ReadableContainer<ByteBuffer> readable = ((ContentPart) content).getReadable();
-									try {
-										DeploymentInformation unmarshalled = DeploymentInformation.unmarshal(IOUtils.toInputStream(readable));
-										StringBuilder builder = new StringBuilder();
-										if (unmarshalled.getResults() != null) {
-											for (DeploymentResult result : unmarshalled.getResults()) {
-												if (result.getError() != null) {
-													builder.append(result.getId()).append("\n").append(result.getError()).append("\n");
-												}
-											}
-										}
-										String string = builder.toString();
-										if (!string.isEmpty()) {
-											Platform.runLater(new Runnable() {
-												public void run() {
-													Confirm.confirm(ConfirmType.ERROR, "Errors during deployment", string, null);
-												}
-											});
-										}
-									}
-									finally {
-										readable.close();
-									}
-								}
-							}
+							deployArchive(artifact.getConfig().getTarget(), deploymentArchive);
 						}
 						catch (Exception e) {
 							logger.error("Could not perform deployment", e);
 							throw new RuntimeException(e);
 						}
 					}
+
 				}, true, "Deploy " + deploymentId);
 			}
 		});
@@ -822,6 +779,55 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		AnchorPane.setTopAnchor(scroll, 0d);
 		pane.getChildren().add(scroll);
 		return artifact;
+	}
+	
+	public static void deployArchive(ClusterArtifact target, Resource deploymentArchive) throws IOException, FormatException, ParseException {
+		List<String> hosts = target.getConfig().getHosts();
+		for (String host : hosts) {
+			Date date = new Date();
+			ServerConnection connection = target.getConnection(host);
+			HTTPResponse execute = connection.getClient().execute(new DefaultHTTPRequest("POST", "/deploy", new PlainMimeContentPart(
+					null, 
+					((ReadableResource) deploymentArchive).getReadable(), 
+					new MimeHeader("Content-Length", "" + ((FiniteResource) deploymentArchive).getSize()),
+					new MimeHeader("Content-Type", "application/zip"),
+					new MimeHeader("Host", host)
+				)),
+				connection.getPrincipal(), 
+				connection.getContext() != null, 
+				false
+			);
+			logger.info("Deployment to '" + host + "' took: " + (new Date().getTime() - date.getTime()) + "ms");
+			if (execute.getCode() != 200) {
+				logger.error("An exception occurred while deploying to '" + host + "': " + execute.getCode());
+			}
+			ModifiablePart content = execute.getContent();
+			if (content instanceof ContentPart) {
+				ReadableContainer<ByteBuffer> readable = ((ContentPart) content).getReadable();
+				try {
+					DeploymentInformation unmarshalled = DeploymentInformation.unmarshal(IOUtils.toInputStream(readable));
+					StringBuilder builder = new StringBuilder();
+					if (unmarshalled.getResults() != null) {
+						for (DeploymentResult result : unmarshalled.getResults()) {
+							if (result.getError() != null) {
+								builder.append(result.getId()).append("\n").append(result.getError()).append("\n");
+							}
+						}
+					}
+					String string = builder.toString();
+					if (!string.isEmpty()) {
+						Platform.runLater(new Runnable() {
+							public void run() {
+								Confirm.confirm(ConfirmType.ERROR, "Errors during deployment", string, null);
+							}
+						});
+					}
+				}
+				finally {
+					readable.close();
+				}
+			}
+		}
 	}
 	
 	@SuppressWarnings({ "rawtypes", "unchecked" })
