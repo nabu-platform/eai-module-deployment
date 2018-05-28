@@ -398,7 +398,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy, downloadButton);
 		}
 		else {
-			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deploy, deployPush, downloadButton);
+			deployButtons.getChildren().addAll(new Label("Deployments: "), deploys, deployPush, downloadButton);
 		}
 		
 		final ComboBox<String> builds = new ComboBox<String>();
@@ -414,6 +414,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 				}
 				catch(Exception e) {
 					logger.error("Could not load builds", e);
+					MainController.getInstance().notify(e);
 				}
 			}
 		});
@@ -466,6 +467,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 					}
 					catch (Exception e) {
 						logger.error("Could not open compare", e);
+						MainController.getInstance().notify(e);
 					}
 				}
 			}
@@ -479,6 +481,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 					}
 					catch (Exception e) {
 						logger.error("Could not open compare", e);
+						MainController.getInstance().notify(e);
 					}
 				}
 			}
@@ -704,6 +707,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 							}
 							catch (IOException e) {
 								logger.error("Could not open build: " + arg2, e);
+								throw new RuntimeException(e);
 							}
 							refreshBuilds.setDisable(false);
 							builds.setDisable(false);
@@ -930,6 +934,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 			}
 			catch (Exception e) {
 				logger.error("Could not save merged version of: " + artifact.getId());
+				MainController.getInstance().notify(e);
 			}
 		}
 

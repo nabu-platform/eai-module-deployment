@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.List;
 import java.util.zip.ZipInputStream;
 
 import javax.ws.rs.POST;
@@ -18,8 +19,11 @@ import javax.ws.rs.core.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import be.nabu.eai.module.deployment.action.DeploymentAction;
+import be.nabu.eai.module.deployment.build.ArtifactMetaData;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.server.Server;
+import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.resources.api.ManageableContainer;
@@ -140,6 +144,30 @@ public class DeploymentREST {
 			server.getRepository().reload(commonToReload);
 		}
 		deploymentInformation.getResults().add(result);
+		
+		// after deployment, run any deployment actions
+		List<ArtifactMetaData> artifacts = deploymentInformation.getBuild().getArtifacts();
+		for (ArtifactMetaData artifact : artifacts) {
+			Artifact resolve = server.getRepository().resolve(artifact.getId());
+			if (resolve instanceof DeploymentAction) {
+				DeploymentResult actionResult = new DeploymentResult();
+				actionResult.setType(DeploymentResultType.ACTION);
+				actionResult.setId(artifact.getId());
+				try {
+					((DeploymentAction) resolve).runTarget();
+				}
+				catch (Exception e) {
+					logger.error("Deployment action failed", e);
+					StringWriter writer = new StringWriter();
+					PrintWriter printer = new PrintWriter(writer);
+					e.printStackTrace(printer);
+					printer.flush();
+					result.setError(writer.toString());
+				}
+				result.setStopped(new Date());
+				deploymentInformation.getResults().add(result);
+			}
+		}
 		
 		if (server.getDeployments() != null) {
 			SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS");

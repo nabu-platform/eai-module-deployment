@@ -24,8 +24,10 @@ import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.api.ArtifactGUIManager;
 import be.nabu.eai.developer.api.ArtifactMerger;
 import be.nabu.eai.developer.api.EntryContextMenuProvider;
+import be.nabu.eai.developer.managers.base.BaseJAXBComplexGUIManager;
 import be.nabu.eai.developer.managers.base.BasePropertyOnlyGUIManager;
 import be.nabu.eai.developer.managers.base.JAXBArtifactMerger;
+import be.nabu.eai.developer.managers.base.JAXBComplexArtifactMerger;
 import be.nabu.eai.developer.managers.util.SimpleProperty;
 import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.developer.util.Confirm;
@@ -236,6 +238,10 @@ public class DeployContextMenu implements EntryContextMenuProvider {
 		// if we have a property-based GUI Manager, show the default differ
 		if (guiManager != null && BasePropertyOnlyGUIManager.class.isAssignableFrom(guiManager.getClass())) {
 			return new JAXBArtifactMerger((BasePropertyOnlyGUIManager) guiManager);
+		}
+		// if we have a complex gui manager, show that merger
+		else if (guiManager != null && BaseJAXBComplexGUIManager.class.isAssignableFrom(guiManager.getClass())) {
+			return new JAXBComplexArtifactMerger();
 		}
 		return null;
 	}

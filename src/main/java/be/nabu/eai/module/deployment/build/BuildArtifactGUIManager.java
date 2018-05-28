@@ -45,6 +45,7 @@ import be.nabu.eai.developer.managers.base.BaseArtifactGUIInstance;
 import be.nabu.eai.developer.managers.base.BaseGUIManager;
 import be.nabu.eai.developer.managers.util.SimpleProperty;
 import be.nabu.eai.module.cluster.ClusterArtifact;
+import be.nabu.eai.module.deployment.action.DeploymentAction;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIRepositoryUtils.EntryFilter;
 import be.nabu.eai.repository.api.DynamicEntry;
@@ -59,6 +60,7 @@ import be.nabu.jfx.control.tree.Marshallable;
 import be.nabu.jfx.control.tree.Tree;
 import be.nabu.jfx.control.tree.TreeItem;
 import be.nabu.jfx.control.tree.TreeUtils;
+import be.nabu.libs.artifacts.api.Artifact;
 import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
 import be.nabu.libs.resources.ResourceUtils;
@@ -261,6 +263,17 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 									}
 								}
 							}
+							Artifact resolve = source.resolve(artifactId);
+							if (resolve instanceof DeploymentAction) {
+								try {
+									((DeploymentAction) resolve).runSource();
+								}
+								catch (Exception e) {
+									logger.error("Could not create build because deployment action failed", e);
+									MainController.getInstance().notify(e);
+									throw new RuntimeException(e);
+								}
+							}
 						}
 						information.setReferences(references);
 						information.setFoldersToClean(new ArrayList<String>(instance.getConfiguration().getFoldersToClean()));
@@ -297,6 +310,8 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 					}
 					catch (IOException e) {
 						logger.error("Could not create build", e);
+						MainController.getInstance().notify(e);
+						throw new RuntimeException(e);
 					}
 				}
 			});
@@ -319,6 +334,8 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 							}
 							catch (IOException e) {
 								logger.error("Could not delete: " + name + ".zip", e);
+								MainController.getInstance().notify(e);
+								throw new RuntimeException(e);
 							}
 						}
 					}
@@ -390,6 +407,8 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 							}
 							catch (Exception e) {
 								logger.error("Could not unset folder", e);
+								MainController.getInstance().notify(e);
+								throw new RuntimeException(e);
 							}
 						}
 						event.consume();
@@ -508,6 +527,8 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 					}
 					catch (Exception e) {
 						logger.error("Could not update selected", e);
+						MainController.getInstance().notify(e);
+						throw new RuntimeException(e);
 					}
 				}
 			});
