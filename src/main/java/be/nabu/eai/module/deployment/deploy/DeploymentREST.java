@@ -137,19 +137,31 @@ public class DeploymentREST {
 			result.setError(writer.toString());
 		}
 		result.setStopped(new Date());
-		if (commonToReload == null) {
-			server.getRepository().reloadAll();
+		
+		try {
+			if (commonToReload == null) {
+				server.getRepository().reloadAll();
+			}
+			else {
+				server.getRepository().reload(commonToReload);
+			}
+			deploymentInformation.getResults().add(result);
 		}
-		else {
-			server.getRepository().reload(commonToReload);
+		catch (Exception e) {
+			logger.error("Reload after deployment failed, please restart the server for consistent results", e);
+			StringWriter writer = new StringWriter();
+			PrintWriter printer = new PrintWriter(writer);
+			e.printStackTrace(printer);
+			printer.flush();
+			result.setError(writer.toString());
 		}
-		deploymentInformation.getResults().add(result);
 		
 		// after deployment, run any deployment actions
 		List<ArtifactMetaData> artifacts = deploymentInformation.getBuild().getArtifacts();
 		for (ArtifactMetaData artifact : artifacts) {
 			Artifact resolve = server.getRepository().resolve(artifact.getId());
 			if (resolve instanceof DeploymentAction) {
+				logger.info("Running deployment action: " + resolve.getId());
 				DeploymentResult actionResult = new DeploymentResult();
 				actionResult.setType(DeploymentResultType.ACTION);
 				actionResult.setId(artifact.getId());

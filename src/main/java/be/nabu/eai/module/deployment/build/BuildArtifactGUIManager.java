@@ -44,6 +44,7 @@ import be.nabu.eai.developer.MainController;
 import be.nabu.eai.developer.managers.base.BaseArtifactGUIInstance;
 import be.nabu.eai.developer.managers.base.BaseGUIManager;
 import be.nabu.eai.developer.managers.util.SimpleProperty;
+import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.module.deployment.action.DeploymentAction;
 import be.nabu.eai.repository.EAIRepositoryUtils;
@@ -68,6 +69,7 @@ import be.nabu.libs.resources.api.ManageableContainer;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.resources.api.WritableResource;
+import be.nabu.libs.types.base.ValueImpl;
 import be.nabu.libs.validator.api.ValidationMessage;
 import be.nabu.libs.validator.api.ValidationMessage.Severity;
 import be.nabu.utils.io.IOUtils;
@@ -225,6 +227,21 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		final ListView<String> builds = new ListView<String>();
 		builds.getItems().addAll(instance.getBuilds());
 		builds.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+		
+		builds.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<String>() {
+			@Override
+			public void changed(ObservableValue<? extends String> arg0, String arg1, String arg2) {
+				if (arg2 != null) {
+					ResourceContainer<?> buildContainer = instance.getBuildContainer();
+					Resource child = buildContainer.getChild(arg2 + ".zip");
+					Property<URI> url = new SimpleProperty<URI>("URL", URI.class, true);
+					MainController.getInstance().showProperties(new SimplePropertyUpdater(false, 
+						new HashSet<Property<?>>(Arrays.asList(url)), 
+						new ValueImpl<URI>(url, ResourceUtils.getURI(child))
+					));
+				}
+			}
+		});
 		
 		version.getChildren().addAll(new Label("Version: "), versionSpinner, minorVersionSpinner);
 		

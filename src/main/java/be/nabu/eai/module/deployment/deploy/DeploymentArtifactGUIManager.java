@@ -788,48 +788,56 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 	public static void deployArchive(ClusterArtifact target, Resource deploymentArchive) throws IOException, FormatException, ParseException {
 		List<String> hosts = target.getConfig().getHosts();
 		for (String host : hosts) {
-			Date date = new Date();
-			ServerConnection connection = target.getConnection(host);
-			HTTPResponse execute = connection.getClient().execute(new DefaultHTTPRequest("POST", "/deploy", new PlainMimeContentPart(
-					null, 
-					((ReadableResource) deploymentArchive).getReadable(), 
-					new MimeHeader("Content-Length", "" + ((FiniteResource) deploymentArchive).getSize()),
-					new MimeHeader("Content-Type", "application/zip"),
-					new MimeHeader("Host", host)
-				)),
-				connection.getPrincipal(), 
-				connection.getContext() != null, 
-				false
-			);
-			logger.info("Deployment to '" + host + "' took: " + (new Date().getTime() - date.getTime()) + "ms");
-			if (execute.getCode() != 200) {
-				logger.error("An exception occurred while deploying to '" + host + "': " + execute.getCode());
-			}
-			ModifiablePart content = execute.getContent();
-			if (content instanceof ContentPart) {
-				ReadableContainer<ByteBuffer> readable = ((ContentPart) content).getReadable();
-				try {
-					DeploymentInformation unmarshalled = DeploymentInformation.unmarshal(IOUtils.toInputStream(readable));
-					StringBuilder builder = new StringBuilder();
-					if (unmarshalled.getResults() != null) {
-						for (DeploymentResult result : unmarshalled.getResults()) {
-							if (result.getError() != null) {
-								builder.append(result.getId()).append("\n").append(result.getError()).append("\n");
+			try {
+				Date date = new Date();
+				ServerConnection connection = target.getConnection(host);
+				HTTPResponse execute = connection.getClient().execute(new DefaultHTTPRequest("POST", "/deploy", new PlainMimeContentPart(
+						null, 
+						((ReadableResource) deploymentArchive).getReadable(), 
+						new MimeHeader("Content-Length", "" + ((FiniteResource) deploymentArchive).getSize()),
+						new MimeHeader("Content-Type", "application/zip"),
+						new MimeHeader("Host", host)
+					)),
+					connection.getPrincipal(), 
+					connection.getContext() != null, 
+					false
+				);
+				logger.info("Deployment to '" + host + "' took: " + (new Date().getTime() - date.getTime()) + "ms");
+				if (execute.getCode() != 200) {
+					logger.error("An exception occurred while deploying to '" + host + "': " + execute.getCode());
+				}
+				ModifiablePart content = execute.getContent();
+				if (content instanceof ContentPart) {
+					ReadableContainer<ByteBuffer> readable = ((ContentPart) content).getReadable();
+					try {
+						DeploymentInformation unmarshalled = DeploymentInformation.unmarshal(IOUtils.toInputStream(readable));
+						StringBuilder builder = new StringBuilder();
+						if (unmarshalled.getResults() != null) {
+							for (DeploymentResult result : unmarshalled.getResults()) {
+								if (result.getError() != null) {
+									builder.append(result.getId()).append("\n").append(result.getError()).append("\n");
+								}
 							}
 						}
+						String string = builder.toString();
+						if (!string.isEmpty()) {
+							Platform.runLater(new Runnable() {
+								public void run() {
+									Confirm.confirm(ConfirmType.ERROR, "Errors during deployment", string, null);
+								}
+							});
+						}
 					}
-					String string = builder.toString();
-					if (!string.isEmpty()) {
-						Platform.runLater(new Runnable() {
-							public void run() {
-								Confirm.confirm(ConfirmType.ERROR, "Errors during deployment", string, null);
-							}
-						});
+					finally {
+						readable.close();
 					}
 				}
-				finally {
-					readable.close();
-				}
+				MainController.getInstance().logDeveloperText("Deployed to: " + host);
+			}
+			catch (Exception e) {
+				MainController.getInstance().notify(e);
+				// we do not want to continue deployment
+				throw new RuntimeException(e);
 			}
 		}
 	}
