@@ -510,7 +510,11 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 											Entry targetEntry = artifact.getConfiguration().getTarget().getClusterRepository().getEntry(artifactMeta.getId());
 											AnchorPane anchorPane = new AnchorPane();
 											Artifact mergedArtifact = sourceEntry.getNode().getArtifact();
-											if (merger.merge(mergedArtifact, targetEntry == null || !targetEntry.isNode() ? null : targetEntry.getNode().getArtifact(), anchorPane, mergedRepository.get())) {
+											// if the target is also a node but of a different kind, you replaced it with something else that simply shares the same name
+											// only send it to the merger if it is of the same type
+											if (merger.merge(mergedArtifact, targetEntry == null || !targetEntry.isNode() || !targetEntry.getNode().getArtifactManager().equals(sourceEntry.getNode().getArtifactManager()) 
+													? null : 
+													targetEntry.getNode().getArtifact(), anchorPane, mergedRepository.get())) {
 												if (added.getItems().contains(artifactMeta.getId()) || updated.getItems().contains(artifactMeta.getId())) {
 													tmpRequiredMerges.add(new PendingMerge((ResourceEntry) sourceEntry, mergedArtifact, anchorPane));
 												}
