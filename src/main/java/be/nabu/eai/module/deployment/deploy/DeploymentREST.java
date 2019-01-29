@@ -56,143 +56,153 @@ public class DeploymentREST {
 	@POST
 	@Path("/deploy")
 	public DeploymentInformation deploy(InputStream input) throws IOException {
-		ZipInputStream zip = new ZipInputStream(input);
-		MemoryDirectory directory = new MemoryDirectory();
 		try {
-			ResourceUtils.unzip(zip, directory);
-		}
-		finally {
-			zip.close();
-		}
-		Date started = new Date();
-		MemoryResource deploymentXml = directory.getChild("deployment.xml");
-		if (deploymentXml == null) {
-			throw new HTTPException(400, "Not a valid deployment zip");
-		}
-		
-		DeploymentInformation deploymentInformation = DeploymentInformation.unmarshal(IOUtils.toInputStream(((ReadableResource) deploymentXml).getReadable()));
-		String commonToReload = DeploymentUtils.getCommonToReload(deploymentInformation);
-		
-		ResourceContainer<?> container = ((ResourceEntry) server.getRepository().getRoot()).getContainer();
-		if (server.isEnableSnapshots()) {
-			server.snapshotRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
-			// get the non-managed container
-			container = (ResourceContainer<?>) AspectUtils.aspects(container).get(0);
-		}
-		
-		logger.info("Deploying: " + commonToReload);
-		deploymentInformation.setResults(new ArrayList<DeploymentResult>());
-		// delete any files as needed
-		if (deploymentInformation.getBuild().getFoldersToClean() != null) {
-			Collections.sort(deploymentInformation.getBuild().getFoldersToClean(), new Comparator<String>() {
-				@Override
-				public int compare(String o1, String o2) {
-					return o2.length() - o1.length();
-				}
-			});
-			for (String folderToClean : deploymentInformation.getBuild().getFoldersToClean()) {
-				logger.info("Cleaning " + folderToClean);
-				DeploymentResult result = new DeploymentResult();
-				try {
-					result.setType(DeploymentResultType.FOLDER);
-					result.setId(folderToClean);
-					ResourceContainer<?> target = (ResourceContainer<?>) ResourceUtils.resolve(container, folderToClean.replace('.', '/'));
-					// folders to clean are never at the artifact level, but at the actual folder level
-					if (target != null && target.getParent() != null) {
-						((ManageableContainer<?>) target.getParent()).delete(target.getName());
-					}
-					else {
-						logger.warn("Could not find resources for: " + folderToClean);
-					}
-				}
-				catch (IOException e) {
-					logger.error("Could not delete files for: " + folderToClean, e);
-					StringWriter writer = new StringWriter();
-					PrintWriter printer = new PrintWriter(writer);
-					e.printStackTrace(printer);
-					printer.flush();
-					result.setError(writer.toString());
-				}
-				result.setStopped(new Date());
-				deploymentInformation.getResults().add(result);
-			}
-		}
-		directory.delete("deployment.xml");
-		DeploymentResult result = new DeploymentResult();
-		result.setType(DeploymentResultType.ARTIFACT);
-		result.setId(commonToReload);
-		try {
-			ResourceUtils.copy(directory, (ManageableContainer<?>) container, null, true, true);
-			server.releaseRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
-		}
-		catch (Exception e) {
-			logger.error("Deployment failed", e);
-			if (server.isEnableSnapshots()) {
-				server.restoreRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
-			}
-			StringWriter writer = new StringWriter();
-			PrintWriter printer = new PrintWriter(writer);
-			e.printStackTrace(printer);
-			printer.flush();
-			result.setError(writer.toString());
-		}
-		result.setStopped(new Date());
-		
-		try {
-			if (commonToReload == null) {
-				server.getRepository().reloadAll();
-			}
-			else {
-				server.getRepository().reload(commonToReload);
-			}
-			deploymentInformation.getResults().add(result);
-		}
-		catch (Exception e) {
-			logger.error("Reload after deployment failed, please restart the server for consistent results", e);
-			StringWriter writer = new StringWriter();
-			PrintWriter printer = new PrintWriter(writer);
-			e.printStackTrace(printer);
-			printer.flush();
-			result.setError(writer.toString());
-		}
-		
-		// after deployment, run any deployment actions
-		List<ArtifactMetaData> artifacts = deploymentInformation.getBuild().getArtifacts();
-		for (ArtifactMetaData artifact : artifacts) {
-			Artifact resolve = server.getRepository().resolve(artifact.getId());
-			if (resolve instanceof DeploymentAction) {
-				logger.info("Running deployment action: " + resolve.getId());
-				DeploymentResult actionResult = new DeploymentResult();
-				actionResult.setType(DeploymentResultType.ACTION);
-				actionResult.setId(artifact.getId());
-				try {
-					((DeploymentAction) resolve).runTarget();
-				}
-				catch (Exception e) {
-					logger.error("Deployment action failed", e);
-					StringWriter writer = new StringWriter();
-					PrintWriter printer = new PrintWriter(writer);
-					e.printStackTrace(printer);
-					printer.flush();
-					result.setError(writer.toString());
-				}
-				result.setStopped(new Date());
-				deploymentInformation.getResults().add(result);
-			}
-		}
-		
-		if (server.getDeployments() != null) {
-			SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS");
-			String fileName = formatter.format(started) + "-" + formatter.format(new Date()) + ".xml";
-			Resource create = ((ManageableContainer<?>) server.getDeployments()).create(fileName, "application/xml");
-			WritableContainer<ByteBuffer> writable = ((WritableResource) create).getWritable();
+			ZipInputStream zip = new ZipInputStream(input);
+			MemoryDirectory directory = new MemoryDirectory();
 			try {
-				deploymentInformation.marshal(IOUtils.toOutputStream(writable));
+				ResourceUtils.unzip(zip, directory);
 			}
 			finally {
-				writable.close();
+				zip.close();
 			}
+			Date started = new Date();
+			MemoryResource deploymentXml = directory.getChild("deployment.xml");
+			if (deploymentXml == null) {
+				throw new HTTPException(400, "Not a valid deployment zip");
+			}
+			
+			DeploymentInformation deploymentInformation = DeploymentInformation.unmarshal(IOUtils.toInputStream(((ReadableResource) deploymentXml).getReadable()));
+			String commonToReload = DeploymentUtils.getCommonToReload(deploymentInformation);
+			
+			ResourceContainer<?> container = ((ResourceEntry) server.getRepository().getRoot()).getContainer();
+			if (server.isEnableSnapshots()) {
+				server.snapshotRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
+				// get the non-managed container
+				container = (ResourceContainer<?>) AspectUtils.aspects(container).get(0);
+			}
+			
+			logger.info("Deploying: " + commonToReload);
+			deploymentInformation.setResults(new ArrayList<DeploymentResult>());
+			// delete any files as needed
+			if (deploymentInformation.getBuild().getFoldersToClean() != null) {
+				Collections.sort(deploymentInformation.getBuild().getFoldersToClean(), new Comparator<String>() {
+					@Override
+					public int compare(String o1, String o2) {
+						return o2.length() - o1.length();
+					}
+				});
+				for (String folderToClean : deploymentInformation.getBuild().getFoldersToClean()) {
+					logger.info("Cleaning " + folderToClean);
+					DeploymentResult result = new DeploymentResult();
+					try {
+						result.setType(DeploymentResultType.FOLDER);
+						result.setId(folderToClean);
+						ResourceContainer<?> target = (ResourceContainer<?>) ResourceUtils.resolve(container, folderToClean.replace('.', '/'));
+						// folders to clean are never at the artifact level, but at the actual folder level
+						if (target != null && target.getParent() != null) {
+							((ManageableContainer<?>) target.getParent()).delete(target.getName());
+						}
+						else {
+							logger.warn("Could not find resources for: " + folderToClean);
+						}
+					}
+					catch (IOException e) {
+						logger.error("Could not delete files for: " + folderToClean, e);
+						StringWriter writer = new StringWriter();
+						PrintWriter printer = new PrintWriter(writer);
+						e.printStackTrace(printer);
+						printer.flush();
+						result.setError(writer.toString());
+					}
+					result.setStopped(new Date());
+					deploymentInformation.getResults().add(result);
+				}
+			}
+			directory.delete("deployment.xml");
+			DeploymentResult result = new DeploymentResult();
+			result.setType(DeploymentResultType.ARTIFACT);
+			result.setId(commonToReload);
+			try {
+				ResourceUtils.copy(directory, (ManageableContainer<?>) container, null, true, true);
+				server.releaseRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
+			}
+			catch (Throwable e) {
+				logger.error("Deployment failed", e);
+				if (server.isEnableSnapshots()) {
+					server.restoreRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
+				}
+				StringWriter writer = new StringWriter();
+				PrintWriter printer = new PrintWriter(writer);
+				e.printStackTrace(printer);
+				printer.flush();
+				result.setError(writer.toString());
+			}
+			result.setStopped(new Date());
+			
+			try {
+				if (commonToReload == null) {
+					server.getRepository().reloadAll();
+				}
+				else {
+					server.getRepository().reload(commonToReload);
+				}
+				deploymentInformation.getResults().add(result);
+			}
+			catch (Throwable e) {
+				logger.error("Reload after deployment failed, please restart the server for consistent results", e);
+				StringWriter writer = new StringWriter();
+				PrintWriter printer = new PrintWriter(writer);
+				e.printStackTrace(printer);
+				printer.flush();
+				result.setError(writer.toString());
+			}
+			
+			logger.info("Checking for post deployment actions");
+			// after deployment, run any deployment actions
+			List<ArtifactMetaData> artifacts = deploymentInformation.getBuild().getArtifacts();
+			for (ArtifactMetaData artifact : artifacts) {
+				Artifact resolve = server.getRepository().resolve(artifact.getId());
+				if (resolve instanceof DeploymentAction) {
+					logger.info("Running deployment action: " + resolve.getId());
+					DeploymentResult actionResult = new DeploymentResult();
+					actionResult.setType(DeploymentResultType.ACTION);
+					actionResult.setId(artifact.getId());
+					try {
+						((DeploymentAction) resolve).runTarget();
+					}
+					catch (Throwable e) {
+						logger.error("Deployment action failed", e);
+						StringWriter writer = new StringWriter();
+						PrintWriter printer = new PrintWriter(writer);
+						e.printStackTrace(printer);
+						printer.flush();
+						result.setError(writer.toString());
+					}
+					result.setStopped(new Date());
+					deploymentInformation.getResults().add(actionResult);
+				}
+				else if (resolve == null) {
+					logger.warn("Could not find artifact: " + artifact.getId() + ", it should have been included in the deployment");
+				}
+			}
+			
+			if (server.getDeployments() != null) {
+				SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS");
+				String fileName = formatter.format(started) + "-" + formatter.format(new Date()) + ".xml";
+				Resource create = ((ManageableContainer<?>) server.getDeployments()).create(fileName, "application/xml");
+				WritableContainer<ByteBuffer> writable = ((WritableResource) create).getWritable();
+				try {
+					deploymentInformation.marshal(IOUtils.toOutputStream(writable));
+				}
+				finally {
+					writable.close();
+				}
+			}
+			return deploymentInformation;
 		}
-		return deploymentInformation;
+		catch (Throwable e) {
+			logger.error("Deployment failed during unspecified action", e);
+			throw new RuntimeException(e);
+		}
 	}
 }
