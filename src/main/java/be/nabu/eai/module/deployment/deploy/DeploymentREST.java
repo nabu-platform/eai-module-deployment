@@ -198,6 +198,7 @@ public class DeploymentREST {
 					writable.close();
 				}
 			}
+			logger.info("Deployment completed: " + deploymentInformation.getDeploymentId());
 			return deploymentInformation;
 		}
 		catch (Throwable e) {
