@@ -71,6 +71,7 @@ import be.nabu.eai.repository.api.ResourceRepository;
 import be.nabu.eai.repository.resources.RepositoryEntry;
 import be.nabu.eai.server.ServerConnection;
 import be.nabu.libs.artifacts.api.Artifact;
+import be.nabu.libs.authentication.impl.BasicPrincipalImpl;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.core.DefaultHTTPRequest;
 import be.nabu.libs.property.api.Property;
@@ -98,6 +99,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 	private BuildInformation buildInformation;
 	private ListView<PendingMerge> pendingPossibleMerges = new ListView<PendingMerge>();
 	private ListView<PendingMerge> pendingRequiredMerges = new ListView<PendingMerge>();
+	private BasicPrincipalImpl principal = new BasicPrincipalImpl();
 	
 	public DeploymentArtifactGUIManager() {
 		super("Deployment Plan", DeploymentArtifact.class, new DeploymentArtifactManager());
@@ -275,6 +277,36 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		AnchorPane.setRightAnchor(scroll, 0d);
 		
 		final DeploymentArtifact artifact = (DeploymentArtifact) entry.getNode().getArtifact();
+		
+		try {
+			ClusterArtifact target = artifact.getConfiguration().getTarget();
+			ServerConnection connection = target.getConnection(target.getConfig().getHosts().get(0));
+			if (connection.getRemote().requiresAuthentication()) {
+				if (principal.getName() == null) {
+					SimpleProperty<String> nameProperty = new SimpleProperty<String>("Username", String.class, true);
+					SimpleProperty<String> passwordProperty = new SimpleProperty<String>("Password", String.class, true);
+					passwordProperty.setPassword(true);
+					SimplePropertyUpdater updater = new SimplePropertyUpdater(true, new LinkedHashSet(Arrays.asList(nameProperty, passwordProperty)));
+					EAIDeveloperUtils.buildPopup(controller, updater, "Authenticate for: " + artifact.getId(), new EventHandler<ActionEvent>() {
+						@Override
+						public void handle(ActionEvent event) {
+							Object value = updater.getValue("Username");
+							if (value != null && !value.toString().isEmpty()) {
+								principal.setName(value.toString());
+								Object password = updater.getValue("Password");
+								principal.setPassword(password != null && !password.toString().isEmpty() ? password.toString() : null);
+								logger.info("Added authentication");
+								connection.setPrincipal(principal);
+								connection.getRemote().setPrincipal(principal);
+							}
+						}
+					}, false);
+				}
+			}
+		}
+		catch (Exception e) {
+			controller.notify(e);
+		}
 		
 		final VBox vbox = new VBox();
 		final TabPane tabs = new TabPane();
