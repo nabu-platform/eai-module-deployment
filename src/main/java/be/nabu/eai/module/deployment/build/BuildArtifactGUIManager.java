@@ -3,6 +3,7 @@ package be.nabu.eai.module.deployment.build;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -47,6 +48,7 @@ import be.nabu.eai.developer.managers.util.SimpleProperty;
 import be.nabu.eai.developer.managers.util.SimplePropertyUpdater;
 import be.nabu.eai.module.cluster.ClusterArtifact;
 import be.nabu.eai.module.deployment.action.DeploymentAction;
+import be.nabu.eai.module.deployment.deploy.DeploymentArtifactGUIManager;
 import be.nabu.eai.repository.EAIRepositoryUtils;
 import be.nabu.eai.repository.EAIRepositoryUtils.EntryFilter;
 import be.nabu.eai.repository.api.DynamicEntry;
@@ -55,6 +57,7 @@ import be.nabu.eai.repository.api.Repository;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.repository.api.ResourceRepository;
 import be.nabu.eai.repository.resources.RepositoryEntry;
+import be.nabu.eai.server.ServerConnection;
 import be.nabu.jfx.control.spinner.DoubleSpinner;
 import be.nabu.jfx.control.spinner.Spinner.Alignment;
 import be.nabu.jfx.control.tree.Marshallable;
@@ -62,6 +65,7 @@ import be.nabu.jfx.control.tree.Tree;
 import be.nabu.jfx.control.tree.TreeItem;
 import be.nabu.jfx.control.tree.TreeUtils;
 import be.nabu.libs.artifacts.api.Artifact;
+import be.nabu.libs.authentication.impl.BasicPrincipalImpl;
 import be.nabu.libs.property.api.Property;
 import be.nabu.libs.property.api.Value;
 import be.nabu.libs.resources.ResourceUtils;
@@ -76,11 +80,13 @@ import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.WritableContainer;
 import be.nabu.utils.io.buffers.bytes.ByteBufferFactory;
+import be.nabu.utils.mime.impl.FormatException;
 
 public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseArtifactGUIInstance<BuildArtifact>> {
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	private boolean initializing;
+	private BasicPrincipalImpl principal = new BasicPrincipalImpl();
 	
 	public BuildArtifactGUIManager() {
 		super("Build Plan", BuildArtifact.class, new BuildArtifactManager());
@@ -140,245 +146,269 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 		});
 		Repository source;
 		if (instance.getConfiguration().getSource() != null) {
-			source = instance.getConfiguration().getSource().getClusterRepository();
+			ClusterArtifact cluster = instance.getConfiguration().getSource();
+			ServerConnection connection = cluster.getConnection(cluster.getConfig().getHosts().get(0));
+			System.out.println("authenticating...");
+			try {
+				DeploymentArtifactGUIManager.authenticate(principal, controller, entry.getId(), connection, new Runnable() {
+					@Override
+					public void run() {
+						createRunnable(cluster.getClusterRepository(), pane, instance, tree).run();
+					}
+				});
+			}
+			catch (Exception e) {
+				MainController.getInstance().notify(e);
+				throw new RuntimeException(e);
+			}
+			System.out.println("authenticated?");
+//			source = cluster.getClusterRepository();
 		}
 		else {
 			source = instance.getRepository();
+			createRunnable(source, pane, instance, tree).run();
 		}
-		tree.rootProperty().set(new DeploymentTreeItem(instance, tree, null, source.getRoot(), false));
-		tree.prefWidthProperty().bind(pane.widthProperty());
 		
-		initializing = true;
-		// select all the already selected items
-		if (instance.getConfiguration().getArtifacts() != null) {
-			List<String> ids = new ArrayList<String>(instance.getConfiguration().getArtifacts());
-			for (String selected : ids) {
-				try {
-					TreeItem<Entry> resolve = tree.resolve(selected.replace(".", "/"), false);
-					if (resolve == null) {
-						instance.getConfiguration().getArtifacts().remove(selected);
-						MainController.getInstance().setChanged();
-						MainController.getInstance().notify(new ValidationMessage(Severity.WARNING, "Can not select: " + selected));
-					}
-					else {
-						((DeploymentTreeItem) resolve).check.setSelected(true);
-						// if the parent item is also selected (due to auto-calculation) and it is _not_ in the "folders to be deleted" list, it has to be set to indeterminate
-						DeploymentTreeItem parent = ((DeploymentTreeItem) resolve).getParent();
-						while (parent != null) {
-							if (parent.check.isSelected()) {
-								if (!instance.getConfiguration().getFoldersToClean().contains(parent.itemProperty().get().getId())) {
-									parent.check.setIndeterminate(true);
-								}
+		return instance;
+	}
+
+	private Runnable createRunnable(Repository source, AnchorPane pane, BuildArtifact instance, Tree<Entry> tree) {
+		return new Runnable() {
+			public void run() {
+				tree.rootProperty().set(new DeploymentTreeItem(instance, tree, null, source.getRoot(), false));
+				tree.prefWidthProperty().bind(pane.widthProperty());
+				
+				initializing = true;
+				// select all the already selected items
+				if (instance.getConfig().getArtifacts() != null) {
+					List<String> ids = new ArrayList<String>(instance.getConfig().getArtifacts());
+					for (String selected : ids) {
+						try {
+							TreeItem<Entry> resolve = tree.resolve(selected.replace(".", "/"), false);
+							if (resolve == null) {
+								instance.getConfiguration().getArtifacts().remove(selected);
+								MainController.getInstance().setChanged();
+								MainController.getInstance().notify(new ValidationMessage(Severity.WARNING, "Can not select: " + selected));
 							}
-							parent = parent.getParent();
-						}
-					}
-				}
-				catch (Exception e) {
-					instance.getConfiguration().getArtifacts().remove(selected);
-					MainController.getInstance().setChanged();
-					MainController.getInstance().notify(new ValidationMessage(Severity.WARNING, "Can not select: " + selected));
-				}
-			}
-		}
-		initializing = false;
-		
-		Label sourceLabel = new Label(instance.getConfiguration().getSource() == null ? "$self" : instance.getConfiguration().getSource().getId());
-		if (source instanceof ResourceRepository) {
-			URI uri = ResourceUtils.getURI(((ResourceRepository) source).getRoot());
-			if (uri != null) {
-				sourceLabel.setText(sourceLabel.getText() + ": " + uri);
-			}
-		}
-		
-		HBox version = new HBox();
-		DoubleSpinner versionSpinner = new DoubleSpinner(Alignment.LEFT);
-		versionSpinner.setPrefHeight(20);
-		versionSpinner.setMin(0d);
-		versionSpinner.valueProperty().set(instance.getConfiguration().getVersion() == null ? 0d : (double) (int) instance.getConfiguration().getVersion());
-		versionSpinner.valueProperty().addListener(new ChangeListener<Double>() {
-			@Override
-			public void changed(ObservableValue<? extends Double> arg0, Double arg1, Double arg2) {
-				try {
-					instance.getConfiguration().setVersion((int) (double) arg2);
-					MainController.getInstance().setChanged();
-				}
-				catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
-		});
-		DoubleSpinner minorVersionSpinner = new DoubleSpinner(Alignment.RIGHT);
-		minorVersionSpinner.setPrefHeight(20);
-		minorVersionSpinner.setMin(0d);
-		minorVersionSpinner.valueProperty().set(instance.getConfiguration().getMinorVersion() == null ? 0d : (double) (int) instance.getConfiguration().getMinorVersion());
-		minorVersionSpinner.valueProperty().addListener(new ChangeListener<Double>() {
-			@Override
-			public void changed(ObservableValue<? extends Double> arg0, Double arg1, Double arg2) {
-				try {
-					instance.getConfiguration().setMinorVersion((int) (double) arg2);
-					MainController.getInstance().setChanged();
-				}
-				catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
-		});
-		final ListView<String> builds = new ListView<String>();
-		builds.getItems().addAll(instance.getBuilds());
-		builds.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-		
-		builds.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<String>() {
-			@Override
-			public void changed(ObservableValue<? extends String> arg0, String arg1, String arg2) {
-				if (arg2 != null) {
-					ResourceContainer<?> buildContainer = instance.getBuildContainer();
-					Resource child = buildContainer.getChild(arg2 + ".zip");
-					Property<URI> url = new SimpleProperty<URI>("URL", URI.class, true);
-					MainController.getInstance().showProperties(new SimplePropertyUpdater(false, 
-						new HashSet<Property<?>>(Arrays.asList(url)), 
-						new ValueImpl<URI>(url, ResourceUtils.getURI(child))
-					));
-				}
-			}
-		});
-		
-		version.getChildren().addAll(new Label("Version: "), versionSpinner, minorVersionSpinner);
-		
-		final ResourceContainer<?> targetContainer = instance.getBuildContainer();
-		if (targetContainer != null) {
-			Button build = new Button("Build");
-			build.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-				@Override
-				public void handle(MouseEvent arg0) {
-					try {
-						SimpleDateFormat formatter = new SimpleDateFormat("yyyy.MM.dd-HH.mm.ss.SSS");
-						Integer version = instance.getConfiguration().getVersion() == null ? 0 : instance.getConfiguration().getVersion();
-						Integer minorVersion = instance.getConfiguration().getMinorVersion() == null ? 0 : instance.getConfiguration().getMinorVersion();
-						BuildInformation information = new BuildInformation(version, minorVersion, instance.getId(), instance.getConfiguration().getSource() == null ? null : instance.getConfiguration().getSource().getId(), InetAddress.getLocalHost().getHostName());
-						Set<String> referenceIds = new HashSet<String>();
-						List<ArtifactMetaData> references = new ArrayList<ArtifactMetaData>();
-						for (String artifactId : instance.getConfiguration().getArtifacts()) {
-							// for each reference, check if it is has an originating artifact or not
-							for (String reference : source.getReferences(artifactId)) {
-								// we skip references like [B pertaining to java byte arrays
-								if (reference == null || reference.startsWith("[")) {
-									continue;
-								}
-								if (!referenceIds.contains(reference) && !instance.getConfiguration().getArtifacts().contains(reference)) {
-									referenceIds.add(reference);
-									Entry referenceEntry = source.getEntry(reference);
-									if (referenceEntry instanceof DynamicEntry) {
-										referenceEntry = source.getEntry(((DynamicEntry) referenceEntry).getOriginatingArtifact());
-										// it could be that the parent is in the deployment 
-										if (referenceEntry != null && instance.getConfiguration().getArtifacts().contains(referenceEntry.getId())) {
-											continue;
+							else {
+								((DeploymentTreeItem) resolve).check.setSelected(true);
+								// if the parent item is also selected (due to auto-calculation) and it is _not_ in the "folders to be deleted" list, it has to be set to indeterminate
+								DeploymentTreeItem parent = ((DeploymentTreeItem) resolve).getParent();
+								while (parent != null) {
+									if (parent.check.isSelected()) {
+										if (!instance.getConfiguration().getFoldersToClean().contains(parent.itemProperty().get().getId())) {
+											parent.check.setIndeterminate(true);
 										}
 									}
-									if (referenceEntry != null && referenceEntry.isNode()) {
-										references.add(new ArtifactMetaData(referenceEntry.getId(), referenceEntry.getNode().getEnvironmentId(), referenceEntry.getNode().getVersion(), referenceEntry.getNode().getLastModified(), referenceEntry.getNode().getArtifactManager()));
-									}
-								}
-							}
-							Artifact resolve = source.resolve(artifactId);
-							if (resolve instanceof DeploymentAction) {
-								try {
-									((DeploymentAction) resolve).runSource();
-								}
-								catch (Exception e) {
-									logger.error("Could not create build because deployment action failed", e);
-									MainController.getInstance().notify(e);
-									throw new RuntimeException(e);
+									parent = parent.getParent();
 								}
 							}
 						}
-						information.setReferences(references);
-						information.setFoldersToClean(new ArrayList<String>(instance.getConfiguration().getFoldersToClean()));
-						List<ArtifactMetaData> artifacts = new ArrayList<ArtifactMetaData>();
-						for (String artifactId : instance.getConfiguration().getArtifacts()) {
-							be.nabu.eai.repository.api.Node node = source.getNode(artifactId);
-							if (node == null) {
-								MainController.getInstance().notify(new ValidationMessage(Severity.ERROR, "Can not find node: " + artifactId));
-								continue;
-							}
-							artifacts.add(new ArtifactMetaData(artifactId, node.getEnvironmentId(), node.getVersion(), node.getLastModified(), node.getArtifactManager()));
+						catch (Exception e) {
+							instance.getConfig().getArtifacts().remove(selected);
+							MainController.getInstance().setChanged();
+							MainController.getInstance().notify(new ValidationMessage(Severity.WARNING, "Can not select: " + selected));
 						}
-						information.setArtifacts(artifacts);
-						ByteBuffer buffer = ByteBufferFactory.getInstance().newInstance();
-						ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(buffer));
-						try {
-							ZipEntry zipEntry = new ZipEntry("build.xml");
-							zip.putNextEntry(zipEntry);
-							information.marshal(zip);
-							EAIRepositoryUtils.zip(zip, (ResourceEntry) source.getRoot(), new BuildEntryFilter(instance));
-						}
-						finally {
-							zip.close();
-						}
-						Resource create = ((ManageableContainer<?>) targetContainer).create(version + "." + minorVersion + "-" + formatter.format(information.getCreated()) + ".zip", "application/zip");
-						WritableContainer<ByteBuffer> output = ((WritableResource) create).getWritable();
-						try {
-							output.write(buffer);
-							builds.getItems().add(create.getName().replace(".zip", ""));
-						}
-						finally {
-							output.close();
-						}
-					}
-					catch (IOException e) {
-						logger.error("Could not create build", e);
-						MainController.getInstance().notify(e);
-						throw new RuntimeException(e);
 					}
 				}
-			});
-			version.getChildren().add(build);
-		}
-		
-		Button delete = new Button("Delete");
-		delete.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
-			@Override
-			public void handle(MouseEvent arg0) {
-				ResourceContainer<?> buildContainer = instance.getBuildContainer();
-				if (buildContainer != null) {
-					builds.disableProperty().set(true);
-					List<String> selectedItems = new ArrayList<String>(builds.getSelectionModel().getSelectedItems());
-					for (String name : selectedItems) {
-						if (buildContainer.getChild(name + ".zip") != null) {
+				initializing = false;
+				
+				Label sourceLabel = new Label(instance.getConfig().getSource() == null ? "$self" : instance.getConfig().getSource().getId());
+				if (source instanceof ResourceRepository) {
+					URI uri = ResourceUtils.getURI(((ResourceRepository) source).getRoot());
+					if (uri != null) {
+						sourceLabel.setText(sourceLabel.getText() + ": " + uri);
+					}
+				}
+				
+				HBox version = new HBox();
+				DoubleSpinner versionSpinner = new DoubleSpinner(Alignment.LEFT);
+				versionSpinner.setPrefHeight(20);
+				versionSpinner.setMin(0d);
+				versionSpinner.valueProperty().set(instance.getConfig().getVersion() == null ? 0d : (double) (int) instance.getConfig().getVersion());
+				versionSpinner.valueProperty().addListener(new ChangeListener<Double>() {
+					@Override
+					public void changed(ObservableValue<? extends Double> arg0, Double arg1, Double arg2) {
+						try {
+							instance.getConfiguration().setVersion((int) (double) arg2);
+							MainController.getInstance().setChanged();
+						}
+						catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+				});
+				DoubleSpinner minorVersionSpinner = new DoubleSpinner(Alignment.RIGHT);
+				minorVersionSpinner.setPrefHeight(20);
+				minorVersionSpinner.setMin(0d);
+				minorVersionSpinner.valueProperty().set(instance.getConfig().getMinorVersion() == null ? 0d : (double) (int) instance.getConfig().getMinorVersion());
+				minorVersionSpinner.valueProperty().addListener(new ChangeListener<Double>() {
+					@Override
+					public void changed(ObservableValue<? extends Double> arg0, Double arg1, Double arg2) {
+						try {
+							instance.getConfiguration().setMinorVersion((int) (double) arg2);
+							MainController.getInstance().setChanged();
+						}
+						catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+				});
+				final ListView<String> builds = new ListView<String>();
+				builds.getItems().addAll(instance.getBuilds());
+				builds.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+				
+				builds.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<String>() {
+					@Override
+					public void changed(ObservableValue<? extends String> arg0, String arg1, String arg2) {
+						if (arg2 != null) {
+							ResourceContainer<?> buildContainer = instance.getBuildContainer();
+							Resource child = buildContainer.getChild(arg2 + ".zip");
+							Property<URI> url = new SimpleProperty<URI>("URL", URI.class, true);
+							MainController.getInstance().showProperties(new SimplePropertyUpdater(false, 
+									new HashSet<Property<?>>(Arrays.asList(url)), 
+									new ValueImpl<URI>(url, ResourceUtils.getURI(child))
+									));
+						}
+					}
+				});
+				
+				version.getChildren().addAll(new Label("Version: "), versionSpinner, minorVersionSpinner);
+				
+				final ResourceContainer<?> targetContainer = instance.getBuildContainer();
+				if (targetContainer != null) {
+					Button build = new Button("Build");
+					build.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
+						@Override
+						public void handle(MouseEvent arg0) {
 							try {
-								((ManageableContainer<?>) buildContainer).delete(name + ".zip");
-								builds.getItems().remove(name);
+								SimpleDateFormat formatter = new SimpleDateFormat("yyyy.MM.dd-HH.mm.ss.SSS");
+								Integer version = instance.getConfiguration().getVersion() == null ? 0 : instance.getConfiguration().getVersion();
+								Integer minorVersion = instance.getConfiguration().getMinorVersion() == null ? 0 : instance.getConfiguration().getMinorVersion();
+								BuildInformation information = new BuildInformation(version, minorVersion, instance.getId(), instance.getConfiguration().getSource() == null ? null : instance.getConfiguration().getSource().getId(), InetAddress.getLocalHost().getHostName());
+								Set<String> referenceIds = new HashSet<String>();
+								List<ArtifactMetaData> references = new ArrayList<ArtifactMetaData>();
+								for (String artifactId : instance.getConfiguration().getArtifacts()) {
+									// for each reference, check if it is has an originating artifact or not
+									for (String reference : source.getReferences(artifactId)) {
+										// we skip references like [B pertaining to java byte arrays
+										if (reference == null || reference.startsWith("[")) {
+											continue;
+										}
+										if (!referenceIds.contains(reference) && !instance.getConfiguration().getArtifacts().contains(reference)) {
+											referenceIds.add(reference);
+											Entry referenceEntry = source.getEntry(reference);
+											if (referenceEntry instanceof DynamicEntry) {
+												referenceEntry = source.getEntry(((DynamicEntry) referenceEntry).getOriginatingArtifact());
+												// it could be that the parent is in the deployment 
+												if (referenceEntry != null && instance.getConfiguration().getArtifacts().contains(referenceEntry.getId())) {
+													continue;
+												}
+											}
+											if (referenceEntry != null && referenceEntry.isNode()) {
+												references.add(new ArtifactMetaData(referenceEntry.getId(), referenceEntry.getNode().getEnvironmentId(), referenceEntry.getNode().getVersion(), referenceEntry.getNode().getLastModified(), referenceEntry.getNode().getArtifactManager()));
+											}
+										}
+									}
+									Artifact resolve = source.resolve(artifactId);
+									if (resolve instanceof DeploymentAction) {
+										try {
+											((DeploymentAction) resolve).runSource();
+										}
+										catch (Exception e) {
+											logger.error("Could not create build because deployment action failed", e);
+											MainController.getInstance().notify(e);
+											throw new RuntimeException(e);
+										}
+									}
+								}
+								information.setReferences(references);
+								information.setFoldersToClean(new ArrayList<String>(instance.getConfiguration().getFoldersToClean()));
+								List<ArtifactMetaData> artifacts = new ArrayList<ArtifactMetaData>();
+								for (String artifactId : instance.getConfiguration().getArtifacts()) {
+									be.nabu.eai.repository.api.Node node = source.getNode(artifactId);
+									if (node == null) {
+										MainController.getInstance().notify(new ValidationMessage(Severity.ERROR, "Can not find node: " + artifactId));
+										continue;
+									}
+									artifacts.add(new ArtifactMetaData(artifactId, node.getEnvironmentId(), node.getVersion(), node.getLastModified(), node.getArtifactManager()));
+								}
+								information.setArtifacts(artifacts);
+								ByteBuffer buffer = ByteBufferFactory.getInstance().newInstance();
+								ZipOutputStream zip = new ZipOutputStream(IOUtils.toOutputStream(buffer));
+								try {
+									ZipEntry zipEntry = new ZipEntry("build.xml");
+									zip.putNextEntry(zipEntry);
+									information.marshal(zip);
+									EAIRepositoryUtils.zip(zip, (ResourceEntry) source.getRoot(), new BuildEntryFilter(instance));
+								}
+								finally {
+									zip.close();
+								}
+								Resource create = ((ManageableContainer<?>) targetContainer).create(version + "." + minorVersion + "-" + formatter.format(information.getCreated()) + ".zip", "application/zip");
+								WritableContainer<ByteBuffer> output = ((WritableResource) create).getWritable();
+								try {
+									output.write(buffer);
+									builds.getItems().add(create.getName().replace(".zip", ""));
+								}
+								finally {
+									output.close();
+								}
 							}
 							catch (IOException e) {
-								logger.error("Could not delete: " + name + ".zip", e);
+								logger.error("Could not create build", e);
 								MainController.getInstance().notify(e);
 								throw new RuntimeException(e);
 							}
 						}
-					}
-					builds.disableProperty().set(false);
+					});
+					version.getChildren().add(build);
 				}
+				
+				Button delete = new Button("Delete");
+				delete.addEventHandler(MouseEvent.MOUSE_CLICKED, new EventHandler<MouseEvent>() {
+					@Override
+					public void handle(MouseEvent arg0) {
+						ResourceContainer<?> buildContainer = instance.getBuildContainer();
+						if (buildContainer != null) {
+							builds.disableProperty().set(true);
+							List<String> selectedItems = new ArrayList<String>(builds.getSelectionModel().getSelectedItems());
+							for (String name : selectedItems) {
+								if (buildContainer.getChild(name + ".zip") != null) {
+									try {
+										((ManageableContainer<?>) buildContainer).delete(name + ".zip");
+										builds.getItems().remove(name);
+									}
+									catch (IOException e) {
+										logger.error("Could not delete: " + name + ".zip", e);
+										MainController.getInstance().notify(e);
+										throw new RuntimeException(e);
+									}
+								}
+							}
+							builds.disableProperty().set(false);
+						}
+					}
+				});
+				delete.disableProperty().bind(builds.getSelectionModel().selectedItemProperty().isNull());
+				
+				HBox buildButtons = new HBox();
+				buildButtons.getChildren().add(delete);
+				
+				VBox vbox = new VBox();
+				vbox.getChildren().addAll(sourceLabel, tree, version, builds, buildButtons);
+				
+				ScrollPane scroll = new ScrollPane();
+				
+				AnchorPane.setBottomAnchor(scroll, 0d);
+				AnchorPane.setTopAnchor(scroll, 0d);
+				AnchorPane.setLeftAnchor(scroll, 0d);
+				AnchorPane.setRightAnchor(scroll, 0d);
+				
+				scroll.setContent(vbox);
+				pane.getChildren().add(scroll);
 			}
-		});
-		delete.disableProperty().bind(builds.getSelectionModel().selectedItemProperty().isNull());
-		
-		HBox buildButtons = new HBox();
-		buildButtons.getChildren().add(delete);
-		
-		VBox vbox = new VBox();
-		vbox.getChildren().addAll(sourceLabel, tree, version, builds, buildButtons);
-		
-		ScrollPane scroll = new ScrollPane();
-		
-		AnchorPane.setBottomAnchor(scroll, 0d);
-		AnchorPane.setTopAnchor(scroll, 0d);
-		AnchorPane.setLeftAnchor(scroll, 0d);
-		AnchorPane.setRightAnchor(scroll, 0d);
-		
-		scroll.setContent(vbox);
-		pane.getChildren().add(scroll);
-		
-		return instance;
+		};
 	}
 	
 	private class DeploymentTreeItem implements TreeItem<Entry> {

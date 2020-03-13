@@ -24,6 +24,7 @@ import be.nabu.eai.module.deployment.build.ArtifactMetaData;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.server.Server;
 import be.nabu.libs.artifacts.api.Artifact;
+import be.nabu.libs.artifacts.api.PostDeployArtifact;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.resources.api.ManageableContainer;
@@ -155,6 +156,18 @@ public class DeploymentREST {
 				e.printStackTrace(printer);
 				printer.flush();
 				result.setError(writer.toString());
+			}
+			
+			// after deployment, run any post deploy artifacts (they might need to prep things for the deployment actions to be done correctly, e.g. database ddl before we do dml with actions)
+			List<PostDeployArtifact> postDeployArtifacts = server.getRepository().getArtifacts(PostDeployArtifact.class);
+			for (PostDeployArtifact artifact : postDeployArtifacts) {
+				try {
+					logger.info("Running post deployment artifact " + artifact.getId());
+					artifact.postDeploy();
+				}
+				catch (Exception e) {
+					logger.error("Failed to run post deployment artifact: " + artifact.getId(), e);
+				}
 			}
 			
 			logger.info("Checking for post deployment actions");

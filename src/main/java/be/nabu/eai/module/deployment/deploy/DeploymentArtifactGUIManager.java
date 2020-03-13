@@ -7,7 +7,10 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.security.Principal;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -281,28 +284,7 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		try {
 			ClusterArtifact target = artifact.getConfiguration().getTarget();
 			ServerConnection connection = target.getConnection(target.getConfig().getHosts().get(0));
-			if (connection.getRemote().requiresAuthentication()) {
-				if (principal.getName() == null) {
-					SimpleProperty<String> nameProperty = new SimpleProperty<String>("Username", String.class, true);
-					SimpleProperty<String> passwordProperty = new SimpleProperty<String>("Password", String.class, true);
-					passwordProperty.setPassword(true);
-					SimplePropertyUpdater updater = new SimplePropertyUpdater(true, new LinkedHashSet(Arrays.asList(nameProperty, passwordProperty)));
-					EAIDeveloperUtils.buildPopup(controller, updater, "Authenticate for: " + artifact.getId(), new EventHandler<ActionEvent>() {
-						@Override
-						public void handle(ActionEvent event) {
-							Object value = updater.getValue("Username");
-							if (value != null && !value.toString().isEmpty()) {
-								principal.setName(value.toString());
-								Object password = updater.getValue("Password");
-								principal.setPassword(password != null && !password.toString().isEmpty() ? password.toString() : null);
-								logger.info("Added authentication");
-								connection.setPrincipal(principal);
-								connection.getRemote().setPrincipal(principal);
-							}
-						}
-					}, false);
-				}
-			}
+			authenticate(principal, controller, artifact.getId(), connection, null);
 		}
 		catch (Exception e) {
 			controller.notify(e);
@@ -819,6 +801,34 @@ public class DeploymentArtifactGUIManager extends BaseGUIManager<DeploymentArtif
 		AnchorPane.setTopAnchor(scroll, 0d);
 		pane.getChildren().add(scroll);
 		return artifact;
+	}
+
+	public static void authenticate(BasicPrincipalImpl principal, MainController controller, String id, ServerConnection connection, Runnable runnable) throws UnsupportedEncodingException, IOException, FormatException, ParseException, URISyntaxException {
+		if (connection.getRemote().requiresAuthentication()) {
+			if (principal.getName() == null) {
+				SimpleProperty<String> nameProperty = new SimpleProperty<String>("Username", String.class, true);
+				SimpleProperty<String> passwordProperty = new SimpleProperty<String>("Password", String.class, true);
+				passwordProperty.setPassword(true);
+				SimplePropertyUpdater updater = new SimplePropertyUpdater(true, new LinkedHashSet(Arrays.asList(nameProperty, passwordProperty)));
+				EAIDeveloperUtils.buildPopup(controller, updater, "Authenticate for: " + id, new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent event) {
+						Object value = updater.getValue("Username");
+						if (value != null && !value.toString().isEmpty()) {
+							principal.setName(value.toString());
+							Object password = updater.getValue("Password");
+							principal.setPassword(password != null && !password.toString().isEmpty() ? password.toString() : null);
+							logger.info("Added authentication");
+							connection.setPrincipal(principal);
+							connection.getRemote().setPrincipal(principal);
+							if (runnable != null) {
+								Platform.runLater(runnable);
+							}
+						}
+					}
+				}, false);
+			}
+		}
 	}
 	
 	public static void deployArchive(ClusterArtifact target, Resource deploymentArchive) throws IOException, FormatException, ParseException {
