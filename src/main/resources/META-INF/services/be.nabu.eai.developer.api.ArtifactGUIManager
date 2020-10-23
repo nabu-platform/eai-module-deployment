@@ -1,2 +1,3 @@
 be.nabu.eai.module.deployment.build.BuildArtifactGUIManager
 be.nabu.eai.module.deployment.deploy.DeploymentArtifactGUIManager
+be.nabu.eai.module.deployment.action.DeploymentActionGUIManager

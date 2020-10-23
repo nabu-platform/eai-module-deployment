@@ -1,2 +1,3 @@
 be.nabu.eai.module.deployment.build.BuildArtifactManager
 be.nabu.eai.module.deployment.deploy.DeploymentArtifactManager
+be.nabu.eai.module.deployment.action.DeploymentActionManager

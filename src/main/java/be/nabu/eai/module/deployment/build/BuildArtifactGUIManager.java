@@ -3,7 +3,6 @@ package be.nabu.eai.module.deployment.build;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -80,7 +79,6 @@ import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.WritableContainer;
 import be.nabu.utils.io.buffers.bytes.ByteBufferFactory;
-import be.nabu.utils.mime.impl.FormatException;
 
 public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseArtifactGUIInstance<BuildArtifact>> {
 
@@ -89,12 +87,12 @@ public class BuildArtifactGUIManager extends BaseGUIManager<BuildArtifact, BaseA
 	private BasicPrincipalImpl principal = new BasicPrincipalImpl();
 	
 	public BuildArtifactGUIManager() {
-		super("Build Plan", BuildArtifact.class, new BuildArtifactManager());
+		super("Build", BuildArtifact.class, new BuildArtifactManager());
 	}
 
 	@Override
 	public String getCategory() {
-		return "Environments";
+		return "Deployment";
 	}
 	
 	@Override
