@@ -24,7 +24,7 @@ import be.nabu.eai.module.deployment.build.ArtifactMetaData;
 import be.nabu.eai.repository.api.ResourceEntry;
 import be.nabu.eai.server.Server;
 import be.nabu.libs.artifacts.api.Artifact;
-import be.nabu.libs.artifacts.api.PostDeployArtifact;
+import be.nabu.libs.artifacts.api.DeployHookArtifact;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.resources.ResourceUtils;
 import be.nabu.libs.resources.api.ManageableContainer;
@@ -57,7 +57,15 @@ public class DeploymentREST {
 	@POST
 	@Path("/deploy")
 	public DeploymentInformation deploy(InputStream input) throws IOException {
+		boolean bringOnline = false;
 		try {
+			// after deployment, run any post deploy artifacts (they might need to prep things for the deployment actions to be done correctly, e.g. database ddl before we do dml with actions)
+			List<DeployHookArtifact> deploymentHookArtifacts = server.getRepository().getArtifacts(DeployHookArtifact.class);
+			for (DeployHookArtifact artifact : deploymentHookArtifacts) {
+				logger.info("Running deployment hook artifact " + artifact.getId() + " [PRE]");
+				artifact.preDeployment();
+			}
+						
 			ZipInputStream zip = new ZipInputStream(input);
 			MemoryDirectory directory = new MemoryDirectory();
 			try {
@@ -80,6 +88,12 @@ public class DeploymentREST {
 				server.snapshotRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
 				// get the non-managed container
 				container = (ResourceContainer<?>) AspectUtils.aspects(container).get(0);
+			}
+			// if you didn't bring the server offline yourself, we will do it for you to prevent errors while the reloading happens
+			// if you don't snapshot the repository, we do it now, before we start the deployment
+			else if (!server.isOffline()) {
+				bringOnline = true;
+				server.bringOffline();
 			}
 			
 			logger.info("Deploying: " + commonToReload);
@@ -125,6 +139,11 @@ public class DeploymentREST {
 			result.setId(commonToReload);
 			try {
 				ResourceUtils.copy(directory, (ManageableContainer<?>) container, null, true, true);
+				// if you did snapshot and the server is not offline, do it at this time, before we expose the new stuff
+				if (!server.isOffline()) {
+					bringOnline = true;
+					server.bringOffline();
+				}
 				server.releaseRepository(commonToReload == null ? "/" : commonToReload.replace('.', '/'));
 			}
 			catch (Throwable e) {
@@ -158,12 +177,10 @@ public class DeploymentREST {
 				result.setError(writer.toString());
 			}
 			
-			// after deployment, run any post deploy artifacts (they might need to prep things for the deployment actions to be done correctly, e.g. database ddl before we do dml with actions)
-			List<PostDeployArtifact> postDeployArtifacts = server.getRepository().getArtifacts(PostDeployArtifact.class);
-			for (PostDeployArtifact artifact : postDeployArtifacts) {
+			for (DeployHookArtifact artifact : deploymentHookArtifacts) {
 				try {
-					logger.info("Running post deployment artifact " + artifact.getId());
-					artifact.postDeploy();
+					logger.info("Running deployment hook artifact " + artifact.getId() + " [DURING]");
+					artifact.duringDeployment();
 				}
 				catch (Exception e) {
 					logger.error("Failed to run post deployment artifact: " + artifact.getId(), e);
@@ -211,7 +228,15 @@ public class DeploymentREST {
 					writable.close();
 				}
 			}
+			for (DeployHookArtifact artifact : deploymentHookArtifacts) {
+				logger.info("Running deployment hook artifact " + artifact.getId() + " [POST]");
+				artifact.postDeployment();
+			}
+			
 			logger.info("Deployment completed: " + deploymentInformation.getDeploymentId());
+			if (bringOnline) {
+				server.bringOnline();
+			}
 			return deploymentInformation;
 		}
 		catch (Throwable e) {
