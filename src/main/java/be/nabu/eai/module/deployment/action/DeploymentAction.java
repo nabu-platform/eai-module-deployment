@@ -51,6 +51,7 @@ import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.api.WritableContainer;
+import nabu.misc.deployment.Services;
 
 public class DeploymentAction extends JAXBArtifact<DeploymentActionConfiguration> {
 
@@ -63,6 +64,10 @@ public class DeploymentAction extends JAXBArtifact<DeploymentActionConfiguration
 	// we run the source service with the (optionally) configured input
 	// and we save the output in the resource folder so it is included in the build
 	public void runSource() throws IOException, ServiceException, InterruptedException, ExecutionException {
+		// should not update state on these servers
+		if (Services.SLAVE_DEV) {
+			return;
+		}
 		Resource state = getDirectory().getChild("state.xml");
 		DefinedService source = getConfig().getSource();
 		DefinedService target = getConfig().getTarget();

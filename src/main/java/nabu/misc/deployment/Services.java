@@ -52,6 +52,8 @@ public class Services {
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	
+	public static boolean SLAVE_DEV = Boolean.parseBoolean(System.getProperty("dev.slave", "false"));
+	
 	@WebResult(name = "information")
 	public DeploymentInformation deploy(@WebParam(name = "zip") InputStream zip) throws IOException {
 		ServiceRunner serviceRunner = EAIResourceRepository.getInstance().getServiceRunner();
@@ -68,7 +70,12 @@ public class Services {
 	public void runDeploymentActions(@WebParam(name = "force") Boolean force) {
 		ServiceRunner serviceRunner = EAIResourceRepository.getInstance().getServiceRunner();
 		if (force == null) {
-			force = false;
+			if (SLAVE_DEV && EAIResourceRepository.isDevelopment()) {
+				force = true;
+			}
+			else {
+				force = false;
+			}
 		}
 		// we do not run the deployment actions in development modus!
 		if (serviceRunner instanceof Server && (force || !EAIResourceRepository.isDevelopment())) {
