@@ -136,10 +136,23 @@ public class DeploymentAction extends JAXBArtifact<DeploymentActionConfiguration
 			// can't set service context this way :'(
 			// it has to be done though cause it has to run on the server, not the developer (even if he is coordinating it)
 			// technically speaking the runTarget "should" be run by the server, not the developer (unlike runSource) but still...
-			getRepository().getServiceRunner().run(target, getRepository().newExecutionContext(SystemPrincipal.ROOT), input);
+			ServiceResult result;
+			try {
+				result = getRepository().getServiceRunner().run(target, getRepository().newExecutionContext(SystemPrincipal.ROOT), input).get();
+			}
+			catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new ServiceException(e);
+			}
+			catch (ExecutionException e) {
+				throw new ServiceException(e);
+			}
+			if (result.getException() != null) {
+				throw result.getException();
+			}
 		}
 		else {
-			logger.error("Could not find target of deployment action: " + getId());
+			throw new ServiceException("DEPLOYMENT-TARGET-NOT-FOUND", "Could not find target of deployment action: " + getId());
 		}
 	}
 }
